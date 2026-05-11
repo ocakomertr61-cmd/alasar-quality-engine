@@ -28,12 +28,12 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     red_mi = (hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or t3_skor >= 5.0)
     sartli_mi = False if red_mi else (t3_skor > 1.7 or (J3 + K3) >= 6)
     
-    if red_mi: return "RED", "🔴", t3_skor, "#FF4B4B" # Kırmızı
-    elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" # Sarı
-    else: return "UYGUN", "🟢", t3_skor, "#28A745" # Yeşil
+    if red_mi: return "RED", "🔴", t3_skor, "#FF4B4B" 
+    elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" 
+    else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- UI SETTINGS ---
-st.set_page_config(page_title="Alasar Quality Engine V6.5", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V6.6", layout="wide")
 rol = st.sidebar.selectbox("Erişim Paneli:", ["Üretim Hattı (Operatör)", "Yönetici Analitik Paneli (Ömer Ocak)"])
 
 # ---------------------------------------------------------
@@ -81,7 +81,6 @@ if rol == "Üretim Hattı (Operatör)":
         data = st.session_state.gecici_analiz
         st.divider()
         
-        # RENKLİ SONUÇ PANELİ
         st.markdown(f"""
             <div style="background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center;">
                 <h1 style="color:white; margin:0;">SİSTEM KARARI: {data['Sistem']}</h1>
@@ -90,27 +89,43 @@ if rol == "Üretim Hattı (Operatör)":
         """, unsafe_allow_html=True)
 
         if data['Sistem'] != "UYGUN":
-            st.warning("📸 UYGUNSUZLUK TESPİT EDİLDİ! Lütfen 3 kanıt fotoğrafı yükleyin.")
+            st.warning("📸 UYGUNSUZLUK: Lütfen 3 kanıt fotoğrafı yükleyin ve onayı onaylayın.")
             f_c1, f_c2, f_c3 = st.columns(3)
             f1 = f_c1.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="op_f1")
             f2 = f_c2.file_uploader("Hata Detayı", type=['jpg', 'png'], key="op_f2")
             f3 = f_c3.file_uploader("Etiket", type=['jpg', 'png'], key="op_f3")
             
-            if st.button("KAYDI YÖNETİCİ ONAYINA GÖNDER"):
-                if f1 and f2 and f3:
-                    data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR", "Yönetici Notu": "-"})
-                    st.session_state.onay_bekleyenler.append(data)
-                    st.info("Kayıt iletildi. Onay bekleniyor.")
-                    del st.session_state.gecici_analiz
-                    st.rerun()
-                else: st.error("⚠️ Fotoğraflar eksik!")
-        else:
-            if st.button("KAYDI TAMAMLA (UYGUN)"):
-                data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY", "Yönetici Notu": "-"})
-                st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
-                st.balloons()
+            st.divider()
+            # Eklendi: Onay Mekanizması
+            emin_misin = st.checkbox("Girilen verilerin ve fotoğrafların doğruluğundan eminim.")
+            
+            col_bt1, col_bt2 = st.columns(2)
+            if col_bt1.button("KAYDI YÖNETİCİYE GÖNDER"):
+                if emin_misin:
+                    if f1 and f2 and f3:
+                        data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR", "Yönetici Notu": "-"})
+                        st.session_state.onay_bekleyenler.append(data)
+                        st.success("✅ Kayıt başarıyla ulaştırıldı. Ömer Bey'in onayı bekleniyor.")
+                        del st.session_state.gecici_analiz
+                        st.rerun()
+                    else: st.error("⚠️ Fotoğraflar eksik!")
+                else: st.warning("⚠️ Lütfen 'Emin misiniz?' kutucuğunu işaretleyin!")
+            
+            if col_bt2.button("İŞLEMİ İPTAL ET VE TEMİZLE"):
                 del st.session_state.gecici_analiz
                 st.rerun()
+        else:
+            # UYGUN kayıt için de onay
+            emin_misin_ok = st.checkbox("Bu lotun UYGUN olarak arşivlenmesini onaylıyorum.")
+            if st.button("KAYDI TAMAMLA (UYGUN)"):
+                if emin_misin_ok:
+                    data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY", "Yönetici Notu": "-"})
+                    st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
+                    st.success("✅ Başarıyla ulaştırıldı. Kayıt arşive eklendi.")
+                    st.balloons()
+                    del st.session_state.gecici_analiz
+                    st.rerun()
+                else: st.warning("⚠️ Lütfen onay kutucuğunu işaretleyin!")
 
 # ---------------------------------------------------------
 # 2. EKRAN: YÖNETİCİ ANALİTİK
@@ -139,7 +154,6 @@ else:
                 fig_line = px.line(df, x="Tarih", y="TRI", markers=True, title="SPC: TRI Skor Trendi")
                 st.plotly_chart(fig_line, use_container_width=True)
             with g2:
-                # Aksiyon renkleri
                 fig_pie = px.pie(df, names="Yönetici Aksiyonu", title="Aksiyon Dağılımı")
                 st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -147,11 +161,9 @@ else:
     st.subheader(f"📥 Onay Bekleyen {len(st.session_state.onay_bekleyenler)} Kayıt")
     
     for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-        # Expander başlığında renkli ikon
         icon = "🔴" if bekleyen['Sistem'] == "RED" else "🟡"
         with st.expander(f"{icon} {bekleyen['Parti No']} | Vardiya: {bekleyen['Vardiya']} | TRI: {bekleyen['TRI']}", expanded=True):
             
-            # Detay Tablosu
             st.write(f"**Operatör:** {bekleyen['Operatör']} | **Sistem:** {bekleyen['Sistem']}")
             detay_df = pd.DataFrame({
                 "Kategori": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
@@ -160,7 +172,6 @@ else:
             })
             st.table(detay_df)
             
-            # Fotoğraflar
             st.divider()
             img_c1, img_c2, img_c3 = st.columns(3)
             if 'Foto_1' in bekleyen: img_c1.image(io.BytesIO(bekleyen['Foto_1']), caption="Genel", use_container_width=True)
@@ -169,15 +180,16 @@ else:
             
             st.divider()
             c_a1, c_a2 = st.columns(2)
-            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v65s_{i}")
-            y_not = c_a2.text_input("Yönetici Notu", key=f"v65n_{i}")
+            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v66s_{i}")
+            y_not = c_a2.text_input("Yönetici Notu", key=f"v66n_{i}")
             
-            if st.button("KARARI KAYDET", key=f"v65b_{i}"):
+            if st.button("KARARI KAYDET", key=f"v66b_{i}"):
                 bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
                 save_data = bekleyen.copy()
                 for f in ['Foto_1', 'Foto_2', 'Foto_3']: save_data.pop(f, None)
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([save_data])])
                 st.session_state.onay_bekleyenler.pop(i)
+                st.success("Karar sisteme işlendi ve arşive eklendi.")
                 st.rerun()
 
 if st.session_state.get('admin_logged_in'):
