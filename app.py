@@ -2,9 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
+# --- YÖNETİCİ PAROLASI ---
+ADMIN_PASSWORD = "1234"  # Burayı dilediğiniz bir şifre ile değiştirebilirsiniz
+
 # --- 1. KALİTE MOTORU HESAPLAMA ---
 def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     toplam_hata = J3 + K3 + L3 + M3
+    hata_orani = (toplam_hata / G3) if G3 > 0 else 0
+    
     if toplam_hata == 0:
         T3 = 0.0
     else:
@@ -13,14 +18,20 @@ def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
         toplam_carpan = 1 + (ek_ceza + (L3 * 0.01) + (M3 * 0.005))
         T3 = max(temel_oran * toplam_carpan, toplam_hata / 20)
 
-    red_mi = ( (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or (J3 + K3) >= 10 or 
-               R3_p >= 4 or S3_p == 5 or T3 >= 5.0 or (F3 > 0 and toplam_hata > (F3 * 0.05)) )
+    # RED (🔴) ŞARTLARI
+    red_mi = (
+        hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or 
+        (J3 + K3) >= 10 or R3_p >= 4 or S3_p == 5 or T3 >= 5.0
+    )
     
+    # SARI (🟡) ŞARTLARI
     sartli_mi = False
     if not red_mi and toplam_hata > 0:
-        sartli_mi = ( T3 > 1.7 or (J3 + K3) >= 6 or (L3 + M3) > 25 or
-                     (P3_p >= 3 and Q3_p >= 3 and R3_p >= 3 and S3_p >= 3 and 
-                      J3 >= 3 and K3 >= 3 and L3 >= 3 and M3 >= 3) )
+        sartli_mi = (
+            T3 > 1.7 or (J3 + K3) >= 6 or (L3 + M3) > 25 or
+            (P3_p >= 3 and Q3_p >= 3 and R3_p >= 3 and S3_p >= 3 and 
+             J3 >= 3 and K3 >= 3 and L3 >= 3 and M3 >= 3)
+        )
 
     if red_mi: return "RED", "🔴", T3
     elif sartli_mi: return "SARI", "🟡", T3
@@ -29,19 +40,20 @@ def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
 # --- 2. VERİ YÖNETİMİ ---
 if 'denetim_gecmisi' not in st.session_state:
     st.session_state.denetim_gecmisi = pd.DataFrame(columns=[
-        "Tarih", "Parti No", "Sevk", "Kontrol", "TRI", "Sistem Kararı", "Yönetici Kararı"
+        "Tarih", "Parti No", "Sevk", "Kontrol", 
+        "P1_A", "P1_P", "P2_A", "P2_P", "P3_A", "P3_P", "P4_A", "P4_P", 
+        "TRI", "HKY", "Sistem Kararı", "Yönetici Kararı"
     ])
 
 # --- 3. UI TASARIMI ---
-st.set_page_config(page_title="Alasar Quality DB V3.4", layout="wide")
-st.title("🛡️ Alasar Quality Engine V3.4 (Onay Mekanizması)")
+st.set_page_config(page_title="Alasar Quality DB V3.6", layout="wide")
+st.title("🛡️ Alasar Quality Engine V3.6 (Güvenli Onay)")
 
 with st.sidebar:
-    st.header("📋 Denetim Girişi")
+    st.header("📋 Denetim Bilgileri")
     parti_no = st.text_input("Parti / Lot Numarası", value="LOT-001")
     f3 = st.number_input("Toplam Sevk (F3)", value=10000)
     g3 = st.number_input("Kontrol Edilen (G3)", value=500)
-    st.divider()
 
 col1, col2 = st.columns(2)
 with col1:
@@ -55,49 +67,61 @@ with col2:
 
 # --- HESAPLAMA ---
 karar, ikon, t3_skor = kalite_motoru_hesapla(f3, g3, j3, k3, l3, m3, p3, q3, r3, s3)
-st.divider()
+hky_sonuc = ((j3+k3+l3+m3)/g3*100) if g3 > 0 else 0
 
-# --- BİLDİRİM VE ONAY PANELİ ---
+st.divider()
+res1, res2, res3 = st.columns(3)
+res1.metric("TRI (Risk Skoru)", f"{t3_skor:.4f}")
+res2.metric("HKY (Hata Oranı)", f"%{hky_sonuc:.2f}")
+res3.header(f"{ikon} {karar}")
+
+# --- GÜVENLİ ONAY PANELİ ---
 final_karar_notu = "OTOMATİK ONAY"
 can_save = True
 
 if karar == "SARI":
-    st.warning(f"⚠️ BİLDİRİM: {parti_no} Nolu Parti ŞARTLI KABUL Sınırında! Lütfen Karar Verin.")
-    onay_col1, onay_col2 = st.columns(2)
-    with onay_col1:
-        if st.button("✅ ŞARTLI KABULÜ ONAYLA", use_container_width=True):
-            st.session_state.admin_decision = "YÖNETİCİ ONAYLADI"
-            st.success("Karar: ONAYLANDI")
-    with onay_col2:
-        if st.button("❌ ŞARTLI KABULÜ REDDET", use_container_width=True):
-            st.session_state.admin_decision = "YÖNETİCİ REDDETTİ"
-            st.error("Karar: REDDEDİLDİ")
+    st.warning(f"🔐 YÖNETİCİ ONAYI GEREKLİ: {parti_no}")
+    pwd_input = st.text_input("Onay Parolası Giriniz", type="password")
     
-    if 'admin_decision' not in st.session_state:
-        st.info("Kayıt için onay veya red seçmelisiniz.")
+    o1, o2 = st.columns(2)
+    if o1.button("✅ ŞARTLI KABULÜ ONAYLA"):
+        if pwd_input == ADMIN_PASSWORD:
+            st.session_state.auth_status = "YÖNETİCİ ONAYLADI"
+            st.success("Parola Doğru! Onaylandı.")
+        else: st.error("Hatalı Parola!")
+    
+    if o2.button("❌ ŞARTLI KABULÜ REDDET"):
+        if pwd_input == ADMIN_PASSWORD:
+            st.session_state.auth_status = "YÖNETİCİ REDDETTİ"
+            st.error("Parola Doğru! Reddedildi.")
+        else: st.error("Hatalı Parola!")
+
+    if 'auth_status' not in st.session_state:
         can_save = False
-    else:
-        final_karar_notu = st.session_state.admin_decision
+    else: final_karar_notu = st.session_state.auth_status
+
 elif karar == "RED":
     final_karar_notu = "SİSTEM REDDETTİ"
-    st.error("🚫 BU PARTİ SEVK EDİLEMEZ!")
+    if hky_sonuc > 5: st.error("❌ HATA ORANI %5'İ GEÇTİ!")
 
-# --- KAYDET BUTONU ---
+# --- KAYDETME (Puanlar ve Adetler Dahil) ---
 if st.button("💾 DENETİMİ LİSTEYE KAYDET", use_container_width=True, disabled=not can_save):
     yeni_veri = {
         "Tarih": datetime.now().strftime("%H:%M:%S"),
         "Parti No": parti_no, "Sevk": f3, "Kontrol": g3,
-        "TRI": round(t3_skor, 4),
+        "P1_A": j3, "P1_P": p3, "P2_A": k3, "P2_P": q3,
+        "P3_A": l3, "P3_P": r3, "P4_A": m3, "P4_P": s3,
+        "TRI": round(t3_skor, 4), "HKY": f"%{hky_sonuc:.2f}",
         "Sistem Kararı": f"{ikon} {karar}",
         "Yönetici Kararı": final_karar_notu
     }
     st.session_state.denetim_gecmisi = pd.concat([st.session_state.denetim_gecmisi, pd.DataFrame([yeni_veri])], ignore_index=True)
-    if 'admin_decision' in st.session_state: del st.session_state.admin_decision # Sıfırlama
-    st.toast("Kayıt Listeye Eklendi!")
+    if 'auth_status' in st.session_state: del st.session_state.auth_status
+    st.toast("Detaylı kayıt eklendi!")
 
 # --- LİSTELEME ---
-st.subheader("📜 Denetim ve Onay Geçmişi")
+st.subheader("📜 Detaylı Denetim ve Onay Geçmişi")
 st.dataframe(st.session_state.denetim_gecmisi.iloc[::-1], use_container_width=True, hide_index=True)
 
 csv = st.session_state.denetim_gecmisi.to_csv(index=False).encode('utf-8-sig')
-st.download_button("📥 Raporu Excel Olarak İndir", csv, "kalite_onay_raporu.csv", "text/csv")
+st.download_button("📥 Excel İndir", csv, "alasar_final_rapor.csv", "text/csv")
