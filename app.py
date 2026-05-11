@@ -11,7 +11,7 @@ if 'denetim_gecmisi' not in st.session_state:
     st.session_state.denetim_gecmisi = pd.DataFrame(columns=[
         "Tarih", "Parti No", "Sevk", "Kontrol", 
         "P1_A", "P1_P", "P2_A", "P2_P", "P3_A", "P3_P", "P4_A", "P4_P", 
-        "TRI", "HKY", "Sistem Kararı", "Yönetici Kararı"
+        "TRI", "HKY", "Sistem Kararı", "Yönetici Kararı", "Yönetici Notu"
     ])
 if 'error_count' not in st.session_state:
     st.session_state.error_count = 0
@@ -29,11 +29,9 @@ def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
         toplam_carpan = 1 + (ek_ceza + (L3 * 0.01) + (M3 * 0.005))
         T3 = max(temel_oran * toplam_carpan, toplam_hata / 20)
 
-    # KESİN RED (🔴) - %5 HKY Buraya Bağlı
     red_mi = (hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or 
               (J3 + K3) >= 10 or R3_p >= 4 or S3_p == 5 or T3 >= 5.0)
     
-    # SARI (🟡)
     sartli_mi = False
     if not red_mi and toplam_hata > 0:
         sartli_mi = (T3 > 1.7 or (J3 + K3) >= 6 or (L3 + M3) > 25)
@@ -43,8 +41,8 @@ def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", T3
 
 # --- UI TASARIMI ---
-st.set_page_config(page_title="Alasar Quality V3.8", layout="wide")
-st.title("🛡️ Alasar Quality Engine V3.8")
+st.set_page_config(page_title="Alasar Quality V3.9", layout="wide")
+st.title("🛡️ Alasar Quality Engine V3.9")
 
 with st.sidebar:
     st.header("📋 Denetim Parametreleri")
@@ -52,9 +50,9 @@ with st.sidebar:
     f3 = st.number_input("Toplam Sevk (F3)", 10000)
     g3 = st.number_input("Kontrol Edilen (G3)", 500)
     st.divider()
-    # ŞİFRE ALANI BURADA - HER ZAMAN GÖRÜNÜR
-    st.subheader("🔐 Yönetici Onay Alanı")
-    pwd_input = st.text_input("Onay Parolası", type="password", help="Sarı kararlarda kayıt için gereklidir.")
+    st.subheader("🔐 Yönetici Onay & Notu")
+    pwd_input = st.text_input("Onay Parolası", type="password")
+    admin_note = st.text_area("Yönetici Açıklaması", placeholder="Kararınızla ilgili notu buraya yazınız...")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -64,7 +62,6 @@ with col2:
     st.subheader("🎯 Risk Puanları")
     p3, q3, r3, s3 = st.number_input("P1 Puan", 1.0), st.number_input("P2 Puan", 1.0), st.number_input("P3 Puan", 1.0), st.number_input("P4 Puan", 1.0)
 
-# Hesaplama
 karar, ikon, t3_skor = kalite_motoru_hesapla(f3, g3, j3, k3, l3, m3, p3, q3, r3, s3)
 hky_sonuc = ((j3+k3+l3+m3)/g3*100) if g3 > 0 else 0
 
@@ -79,20 +76,19 @@ final_yonetici_karari = "OTOMATİK ONAY"
 is_authorized = False
 
 if karar == "SARI":
-    st.warning("⚠️ ŞARTLI KABUL: Kayıt için yan tarafa şifrenizi girip 'Denetimi Kaydet'e basınız.")
+    st.warning("⚠️ ŞARTLI KABUL: Kayıt için yan tarafa şifrenizi girip 'Veritabanına İşle'ye basınız.")
     if pwd_input == ADMIN_PASSWORD:
         is_authorized = True
         final_yonetici_karari = "YÖNETİCİ ONAYLADI"
     elif pwd_input != "":
         st.session_state.error_count += 1
-        st.error(f"Hatalı Parola! (Deneme: {st.session_state.error_count}/3)")
         if st.session_state.error_count >= 3:
             st.error(f"🚨 KRİTİK: {TARGET_EMAIL} adresine uyarı gönderiliyor!")
             st.session_state.error_count = 0
 elif karar == "RED":
     final_yonetici_karari = "SİSTEM REDDETTİ"
-    is_authorized = True # Red durumunda şifresiz kaydedebilir çünkü sistem zaten reddetti
-else: # UYGUN
+    is_authorized = True
+else:
     is_authorized = True
 
 # KAYDET BUTONU
@@ -105,16 +101,17 @@ if st.button("💾 DENETİMİ VERİTABANINA İŞLE", use_container_width=True):
             "P3_A": l3, "P3_P": r3, "P4_A": m3, "P4_P": s3,
             "TRI": round(t3_skor, 4), "HKY": f"%{hky_sonuc:.2f}",
             "Sistem Kararı": f"{ikon} {karar}",
-            "Yönetici Kararı": final_yonetici_karari
+            "Yönetici Kararı": final_yonetici_karari,
+            "Yönetici Notu": admin_note if admin_note else "-"
         }
         st.session_state.denetim_gecmisi = pd.concat([st.session_state.denetim_gecmisi, pd.DataFrame([yeni_satir])], ignore_index=True)
         st.success("Kayıt Başarıyla Listeye Eklendi!")
     else:
-        st.error("Yönetici onayı (şifre) olmadan Şartlı Kabul kaydı yapılamaz!")
+        st.error("Hatalı Parola veya Eksik Onay!")
 
 # --- LİSTELEME ---
 st.divider()
-st.subheader("📜 Detaylı Denetim Geçmişi (Tüm Adetler ve Puanlar)")
+st.subheader("📜 Denetim Geçmişi (Tüm Detaylar ve Yönetici Notları)")
 if not st.session_state.denetim_gecmisi.empty:
     st.dataframe(st.session_state.denetim_gecmisi.iloc[::-1], use_container_width=True, hide_index=True)
     csv = st.session_state.denetim_gecmisi.to_csv(index=False).encode('utf-8-sig')
