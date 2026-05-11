@@ -1,31 +1,27 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from datetime import datetime
-import io 
-import time # Bekleme süresi için eklendi
+import time
+import os
+import io
 
-# --- GRAFİK KÜTÜPHANESİ KONTROLÜ ---
-TRY_PLOTLY = True
-try:
-    import plotly.express as px
-except ImportError:
-    TRY_PLOTLY = False
+# --- GÜVENLİK AYARLARI ---
+VALID_USERNAME = "alasar"
+VALID_PASSWORD = "30052012"
+EXCEL_FILE = "alasar_kalite_veritabani.xlsx"
 
-# --- GÜVENLİ AYARLAR ---
-ADMIN_PASSWORD = "30052012"
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="Alasar Quality Engine", layout="wide")
 
-if 'ana_veritabani' not in st.session_state:
-    st.session_state.ana_veritabani = pd.DataFrame() 
-if 'onay_bekleyenler' not in st.session_state:
-    st.session_state.onay_bekleyenler = [] 
-
-# --- KALİTE MOTORU ---
+# --- KALİTE MOTORU (KNOW-HOW ALGORİTMASI) ---
 def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     toplam_hata = J3 + K3 + L3 + M3
     hata_orani = (toplam_hata / G3) if G3 > 0 else 0
+    # Sizin özel TRI katsayılarınız
     temel_oran = ((P3_p * 2) + (Q3_p * 3) + (R3_p * 2) + (S3_p * 2)) / 15
     t3_skor = max(temel_oran * (1 + (J3*0.03 + K3*0.05)), toplam_hata / 20) if toplam_hata > 0 else 0.0
+    
+    # Karar Mantığı
     red_mi = (hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or t3_skor >= 5.0)
     sartli_mi = False if red_mi else (t3_skor > 1.7 or (J3 + K3) >= 6)
     
@@ -33,170 +29,81 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" 
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
-# --- UI SETTINGS ---
-st.set_page_config(page_title="Alasar Quality Engine V6.7", layout="wide")
-rol = st.sidebar.selectbox("Erişim Paneli:", ["Üretim Hattı (Operatör)", "Yönetici Analitik Paneli (Ömer Ocak)"])
+# --- MOBİL CSS ---
+st.markdown("""
+    <style>
+    .stButton>button { width: 100%; height: 3.5em; border-radius: 12px; font-weight: bold; }
+    .stNumberInput input { font-size: 18px !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# 1. EKRAN: ÜRETİM HATTI
-# ---------------------------------------------------------
-if rol == "Üretim Hattı (Operatör)":
-    st.header("🏭 Üretim Hattı Giriş Terminali")
-    
-    with st.sidebar:
-        st.subheader("👤 Görevli Bilgisi")
-        op_ad = st.text_input("Ad Soyad")
-        op_kase = st.text_input("Kaşe No")
-        vardiya_no = st.number_input("Vardiya Kodu", min_value=1, value=66, step=1)
+# --- OTURUM VE EXCEL YÖNETİMİ ---
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
 
-    with st.form("veri_giris_formu"):
-        c1, c2, c3 = st.columns(3)
-        lot = c1.text_input("Parti No", "LOT-")
-        sevk = c2.number_input("Toplam Sevk Adeti", 1, value=1000)
-        kontrol = c3.number_input("Kontrol Edilen Adet", 1, value=100)
-        
-        st.divider()
-        st.subheader("Hata Adetleri ve Risk Puanları")
-        h1, h2, h3, h4 = st.columns(4)
-        j3 = h1.number_input("P1 (Kritik) Adet", 0); p1p = h1.number_input("P1 Puan", 1.0, value=1.0)
-        k3 = h2.number_input("P2 (Majör) Adet", 0); p2p = h2.number_input("P2 Puan", 1.0, value=1.0)
-        l3 = h3.number_input("P3 (Minör) Adet", 0); p3p = h3.number_input("P3 Puan", 1.0, value=1.0)
-        m3 = h4.number_input("P4 (Görsel) Adet", 0); p4p = h4.number_input("P4 Puan", 1.0, value=1.0)
-        
-        op_not = st.text_area("Operatör Gözlem Notları")
-        submit = st.form_submit_button("SİSTEM ANALİZİNİ BAŞLAT")
-
-    if submit:
-        if not op_ad or not op_kase or lot == "LOT-":
-            st.error("⚠️ Lütfen bilgileri eksiksiz doldurun!")
+def excele_yaz(yeni_veri_dict):
+    try:
+        temiz_veri = {k: v for k, v in yeni_veri_dict.items() if not str(k).startswith('Foto_')}
+        yeni_df = pd.DataFrame([temiz_veri])
+        if not os.path.isfile(EXCEL_FILE):
+            yeni_df.to_excel(EXCEL_FILE, index=False, engine='openpyxl')
         else:
-            karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
-            st.session_state.gecici_analiz = {
-                "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"), "Operatör": op_ad, "Kaşe": op_kase, "Vardiya": str(vardiya_no),
-                "Parti No": lot, "Sevk": sevk, "Kontrol": kontrol, 
-                "P1_A": j3, "P1_P": p1p, "P2_A": k3, "P2_P": p2p, "P3_A": l3, "P3_P": p3p, "P4_A": m3, "P4_P": p4p,
-                "TRI": round(skor, 4), "Sistem": karar, "Renk": renk, "Operatör Notu": op_not
-            }
+            eski_df = pd.read_excel(EXCEL_FILE, engine='openpyxl')
+            pd.concat([eski_df, yeni_df], ignore_index=True).to_excel(EXCEL_FILE, index=False, engine='openpyxl')
+        return True
+    except Exception as e:
+        st.error(f"Excel hatası: {e}"); return False
 
-    if 'gecici_analiz' in st.session_state:
-        data = st.session_state.gecici_analiz
-        st.divider()
-        
-        st.markdown(f"""
-            <div style="background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center;">
-                <h1 style="color:white; margin:0;">SİSTEM KARARI: {data['Sistem']}</h1>
-                <h3 style="color:white; margin:0;">TRI RİSK PUANI: {data['TRI']}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-        if data['Sistem'] != "UYGUN":
-            st.warning("📸 UYGUNSUZLUK: Lütfen 3 kanıt fotoğrafı yükleyin.")
-            f_c1, f_c2, f_c3 = st.columns(3)
-            f1 = f_c1.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="op_f1")
-            f2 = f_c2.file_uploader("Hata Detayı", type=['jpg', 'png'], key="op_f2")
-            f3 = f_c3.file_uploader("Etiket", type=['jpg', 'png'], key="op_f3")
-            
-            st.divider()
-            emin_misin = st.checkbox("Girilen verilerin ve fotoğrafların doğruluğundan eminim.")
-            
-            col_bt1, col_bt2 = st.columns(2)
-            if col_bt1.button("KAYDI YÖNETİCİYE GÖNDER"):
-                if emin_misin:
-                    if f1 and f2 and f3:
-                        data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR", "Yönetici Notu": "-"})
-                        st.session_state.onay_bekleyenler.append(data)
-                        
-                        # --- DÜZELTME: Mesajın görünmesi için 2 saniye bekleme eklendi ---
-                        msg = st.success("✅ Kayıt başarıyla ulaştırıldı. Ömer Bey'in onayı bekleniyor.")
-                        time.sleep(2) 
-                        del st.session_state.gecici_analiz
-                        st.rerun()
-                    else: st.error("⚠️ Fotoğraflar eksik!")
-                else: st.warning("⚠️ Lütfen 'Emin misiniz?' kutucuğunu işaretleyin!")
-            
-            if col_bt2.button("İŞLEMİ İPTAL ET VE TEMİZLE"):
-                del st.session_state.gecici_analiz
+# --- GİRİŞ KONTROLÜ ---
+if not st.session_state.authenticated:
+    st.markdown("<h1 style='text-align:center;'>ALASAR QUALITY ENGINE</h1>", unsafe_allow_html=True)
+    with st.form("login_form"):
+        u = st.text_input("Kullanıcı Adı")
+        p = st.text_input("Şifre", type="password")
+        if st.form_submit_button("Giriş Yap"):
+            if u == VALID_USERNAME and p == VALID_PASSWORD:
+                st.session_state.authenticated = True
                 st.rerun()
-        else:
-            emin_misin_ok = st.checkbox("Bu lotun UYGUN olarak arşivlenmesini onaylıyorum.")
-            if st.button("KAYDI TAMAMLA (UYGUN)"):
-                if emin_misin_ok:
-                    data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY", "Yönetici Notu": "-"})
-                    st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
-                    st.success("✅ Başarıyla ulaştırıldı. Kayıt arşive eklendi.")
-                    st.balloons()
-                    time.sleep(2)
-                    del st.session_state.gecici_analiz
-                    st.rerun()
-                else: st.warning("⚠️ Lütfen onay kutucuğunu işaretleyin!")
+            else: st.error("Hatalı Giriş!")
+    st.stop()
 
-# ---------------------------------------------------------
-# 2. EKRAN: YÖNETİCİ ANALİTİK
-# ---------------------------------------------------------
+# --- ANA PANEL ---
 else:
-    if not st.session_state.get('admin_logged_in'):
-        st.error("🔒 YÖNETİCİ GİRİŞİ GEREKLİ")
-        pwd = st.text_input("Parola", type="password")
-        if st.button("Giriş"):
-            if pwd == ADMIN_PASSWORD: st.session_state.admin_logged_in = True; st.rerun()
-        st.stop()
+    top_c1, top_c2 = st.columns([9, 1])
+    top_c1.title("🏭 Alasar Kalite Terminali")
+    if top_c2.button("Çıkış"):
+        st.session_state.authenticated = False
+        st.rerun()
 
-    st.header("📊 Alasar Stratejik Kalite Analitiği")
-    
-    if not st.session_state.ana_veritabani.empty:
-        df = st.session_state.ana_veritabani
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Toplam Parti", len(df))
-        m2.metric("Ortalama TRI", f"{df['TRI'].mean():.2f}")
-        m3.metric("Uygunluk Oranı", f"%{(len(df[df['Sistem']=='UYGUN'])/len(df)*100):.1f}")
-        
-        if TRY_PLOTLY:
-            st.divider()
-            g1, g2 = st.columns(2)
-            with g1:
-                fig_line = px.line(df, x="Tarih", y="TRI", markers=True, title="SPC: TRI Skor Trendi")
-                st.plotly_chart(fig_line, use_container_width=True)
-            with g2:
-                fig_pie = px.pie(df, names="Yönetici Aksiyonu", title="Aksiyon Dağılımı")
-                st.plotly_chart(fig_pie, use_container_width=True)
+    menu = st.sidebar.radio("Menü:", ["Veri Girişi", "Yönetici Paneli"])
 
-    st.divider()
-    st.subheader(f"📥 Onay Bekleyen {len(st.session_state.onay_bekleyenler)} Kayıt")
-    
-    for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-        icon = "🔴" if bekleyen['Sistem'] == "RED" else "🟡"
-        with st.expander(f"{icon} {bekleyen['Parti No']} | Vardiya: {bekleyen['Vardiya']} | TRI: {bekleyen['TRI']}", expanded=True):
+    if menu == "Veri Girişi":
+        with st.form("main_form"):
+            c1, c2, c3 = st.columns(3)
+            op = c1.text_input("Operatör Adı")
+            lot = c2.text_input("LOT No", "LOT-")
+            kontrol = c3.number_input("Kontrol Adeti", 1, value=100)
             
-            st.write(f"**Operatör:** {bekleyen['Operatör']} | **Sistem:** {bekleyen['Sistem']}")
-            detay_df = pd.DataFrame({
-                "Kategori": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
-                "Adet": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']],
-                "Puan": [bekleyen['P1_P'], bekleyen['P2_P'], bekleyen['P3_P'], bekleyen['P4_P']]
-            })
-            st.table(detay_df)
+            st.write("### Hata Girişi")
+            h1, h2, h3, h4 = st.columns(4)
+            j3 = h1.number_input("P1 Adet", 0); p1p = h1.number_input("P1 Puan", 1.0)
+            k3 = h2.number_input("P2 Adet", 0); p2p = h2.number_input("P2 Puan", 1.0)
+            l3 = h3.number_input("P3 Adet", 0); p3p = h3.number_input("P3 Puan", 1.0)
+            m3 = h4.number_input("P4 Adet", 0); p4p = h4.number_input("P4 Puan", 1.0)
             
-            st.divider()
-            img_c1, img_c2, img_c3 = st.columns(3)
-            if 'Foto_1' in bekleyen: img_c1.image(io.BytesIO(bekleyen['Foto_1']), caption="Genel", use_container_width=True)
-            if 'Foto_2' in bekleyen: img_c2.image(io.BytesIO(bekleyen['Foto_2']), caption="Detay", use_container_width=True)
-            if 'Foto_3' in bekleyen: img_c3.image(io.BytesIO(bekleyen['Foto_3']), caption="Etiket", use_container_width=True)
-            
-            st.divider()
-            c_a1, c_a2 = st.columns(2)
-            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v67s_{i}")
-            y_not = c_a2.text_input("Yönetici Notu", key=f"v67n_{i}")
-            
-            if st.button("KARARI KAYDET", key=f"v67b_{i}"):
-                bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
-                save_data = bekleyen.copy()
-                for f in ['Foto_1', 'Foto_2', 'Foto_3']: save_data.pop(f, None)
-                st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([save_data])])
-                st.session_state.onay_bekleyenler.pop(i)
-                st.success("Karar başarıyla kaydedildi.")
-                time.sleep(1.5)
-                st.rerun()
+            if st.form_submit_button("ANALİZ ET VE GÖNDER"):
+                karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
+                veriler = {
+                    "Tarih": datetime.now().strftime("%d-%m-%Y %H:%M"), "Operatör": op, "LOT": lot,
+                    "TRI": round(skor, 3), "Karar": karar, "P1": j3, "P2": k3, "P3": l3, "P4": m3
+                }
+                if excele_yaz(veriler):
+                    st.markdown(f"<h2 style='color:{renk}; text-align:center;'>{ikon} Karar: {karar} (TRI: {round(skor, 2)})</h2>", unsafe_allow_html=True)
+                    st.success("Kayıt Excel'e işlendi.")
+                    time.sleep(2)
+                    st.rerun()
 
-if st.session_state.get('admin_logged_in'):
-    st.divider()
-    st.subheader("📜 Genel Arşiv")
-    st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True, hide_index=True)
+    elif menu == "Yönetici Paneli":
+        st.subheader("📊 Kayıtlı Veriler")
+        if os.path.exists(EXCEL_FILE):
+            st.dataframe(pd.read_excel(EXCEL_FILE).iloc[::-1], use_container_width=True)
