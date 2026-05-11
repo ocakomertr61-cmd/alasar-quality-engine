@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io 
+import time # Bekleme süresi için eklendi
 
 # --- GRAFİK KÜTÜPHANESİ KONTROLÜ ---
 TRY_PLOTLY = True
@@ -33,7 +34,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- UI SETTINGS ---
-st.set_page_config(page_title="Alasar Quality Engine V6.6", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V6.7", layout="wide")
 rol = st.sidebar.selectbox("Erişim Paneli:", ["Üretim Hattı (Operatör)", "Yönetici Analitik Paneli (Ömer Ocak)"])
 
 # ---------------------------------------------------------
@@ -89,14 +90,13 @@ if rol == "Üretim Hattı (Operatör)":
         """, unsafe_allow_html=True)
 
         if data['Sistem'] != "UYGUN":
-            st.warning("📸 UYGUNSUZLUK: Lütfen 3 kanıt fotoğrafı yükleyin ve onayı onaylayın.")
+            st.warning("📸 UYGUNSUZLUK: Lütfen 3 kanıt fotoğrafı yükleyin.")
             f_c1, f_c2, f_c3 = st.columns(3)
             f1 = f_c1.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="op_f1")
             f2 = f_c2.file_uploader("Hata Detayı", type=['jpg', 'png'], key="op_f2")
             f3 = f_c3.file_uploader("Etiket", type=['jpg', 'png'], key="op_f3")
             
             st.divider()
-            # Eklendi: Onay Mekanizması
             emin_misin = st.checkbox("Girilen verilerin ve fotoğrafların doğruluğundan eminim.")
             
             col_bt1, col_bt2 = st.columns(2)
@@ -105,7 +105,10 @@ if rol == "Üretim Hattı (Operatör)":
                     if f1 and f2 and f3:
                         data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR", "Yönetici Notu": "-"})
                         st.session_state.onay_bekleyenler.append(data)
-                        st.success("✅ Kayıt başarıyla ulaştırıldı. Ömer Bey'in onayı bekleniyor.")
+                        
+                        # --- DÜZELTME: Mesajın görünmesi için 2 saniye bekleme eklendi ---
+                        msg = st.success("✅ Kayıt başarıyla ulaştırıldı. Ömer Bey'in onayı bekleniyor.")
+                        time.sleep(2) 
                         del st.session_state.gecici_analiz
                         st.rerun()
                     else: st.error("⚠️ Fotoğraflar eksik!")
@@ -115,7 +118,6 @@ if rol == "Üretim Hattı (Operatör)":
                 del st.session_state.gecici_analiz
                 st.rerun()
         else:
-            # UYGUN kayıt için de onay
             emin_misin_ok = st.checkbox("Bu lotun UYGUN olarak arşivlenmesini onaylıyorum.")
             if st.button("KAYDI TAMAMLA (UYGUN)"):
                 if emin_misin_ok:
@@ -123,6 +125,7 @@ if rol == "Üretim Hattı (Operatör)":
                     st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
                     st.success("✅ Başarıyla ulaştırıldı. Kayıt arşive eklendi.")
                     st.balloons()
+                    time.sleep(2)
                     del st.session_state.gecici_analiz
                     st.rerun()
                 else: st.warning("⚠️ Lütfen onay kutucuğunu işaretleyin!")
@@ -180,16 +183,17 @@ else:
             
             st.divider()
             c_a1, c_a2 = st.columns(2)
-            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v66s_{i}")
-            y_not = c_a2.text_input("Yönetici Notu", key=f"v66n_{i}")
+            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v67s_{i}")
+            y_not = c_a2.text_input("Yönetici Notu", key=f"v67n_{i}")
             
-            if st.button("KARARI KAYDET", key=f"v66b_{i}"):
+            if st.button("KARARI KAYDET", key=f"v67b_{i}"):
                 bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
                 save_data = bekleyen.copy()
                 for f in ['Foto_1', 'Foto_2', 'Foto_3']: save_data.pop(f, None)
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([save_data])])
                 st.session_state.onay_bekleyenler.pop(i)
-                st.success("Karar sisteme işlendi ve arşive eklendi.")
+                st.success("Karar başarıyla kaydedildi.")
+                time.sleep(1.5)
                 st.rerun()
 
 if st.session_state.get('admin_logged_in'):
