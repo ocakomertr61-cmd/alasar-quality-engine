@@ -28,12 +28,12 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     red_mi = (hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or t3_skor >= 5.0)
     sartli_mi = False if red_mi else (t3_skor > 1.7 or (J3 + K3) >= 6)
     
-    if red_mi: return "RED", "🔴", t3_skor
-    elif sartli_mi: return "SARI", "🟡", t3_skor
-    else: return "UYGUN", "🟢", t3_skor
+    if red_mi: return "RED", "🔴", t3_skor, "#FF4B4B" # Kırmızı
+    elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" # Sarı
+    else: return "UYGUN", "🟢", t3_skor, "#28A745" # Yeşil
 
 # --- UI SETTINGS ---
-st.set_page_config(page_title="Alasar Quality Engine V6.3", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V6.5", layout="wide")
 rol = st.sidebar.selectbox("Erişim Paneli:", ["Üretim Hattı (Operatör)", "Yönetici Analitik Paneli (Ömer Ocak)"])
 
 # ---------------------------------------------------------
@@ -46,8 +46,7 @@ if rol == "Üretim Hattı (Operatör)":
         st.subheader("👤 Görevli Bilgisi")
         op_ad = st.text_input("Ad Soyad")
         op_kase = st.text_input("Kaşe No")
-        # Seçenek yerine serbest rakam girişi (66, 67, 68 gibi)
-        vardiya_no = st.number_input("Vardiya Kodu (Sayısal)", min_value=1, value=66, step=1)
+        vardiya_no = st.number_input("Vardiya Kodu", min_value=1, value=66, step=1)
 
     with st.form("veri_giris_formu"):
         c1, c2, c3 = st.columns(3)
@@ -70,26 +69,28 @@ if rol == "Üretim Hattı (Operatör)":
         if not op_ad or not op_kase or lot == "LOT-":
             st.error("⚠️ Lütfen bilgileri eksiksiz doldurun!")
         else:
-            karar, ikon, skor = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
+            karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
             st.session_state.gecici_analiz = {
                 "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"), "Operatör": op_ad, "Kaşe": op_kase, "Vardiya": str(vardiya_no),
                 "Parti No": lot, "Sevk": sevk, "Kontrol": kontrol, 
                 "P1_A": j3, "P1_P": p1p, "P2_A": k3, "P2_P": p2p, "P3_A": l3, "P3_P": p3p, "P4_A": m3, "P4_P": p4p,
-                "TRI": round(skor, 4), "Sistem": karar, "Operatör Notu": op_not
+                "TRI": round(skor, 4), "Sistem": karar, "Renk": renk, "Operatör Notu": op_not
             }
 
-    # Operatör ekranında TRI ve KARAR bilgilerini göster
     if 'gecici_analiz' in st.session_state:
         data = st.session_state.gecici_analiz
         st.divider()
         
-        # BİLGİ PANELİ (Operatörün görmesi gerekenler)
-        col_res1, col_res2 = st.columns(2)
-        col_res1.success(f"### SİSTEM KARARI: {data['Sistem']}")
-        col_res2.info(f"### TRI PUANI: {data['TRI']}")
+        # RENKLİ SONUÇ PANELİ
+        st.markdown(f"""
+            <div style="background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center;">
+                <h1 style="color:white; margin:0;">SİSTEM KARARI: {data['Sistem']}</h1>
+                <h3 style="color:white; margin:0;">TRI RİSK PUANI: {data['TRI']}</h3>
+            </div>
+        """, unsafe_allow_html=True)
 
         if data['Sistem'] != "UYGUN":
-            st.warning("📸 UYGUNSUZLUK TESPİT EDİLDİ! Lütfen 3 adet kanıt fotoğrafı yükleyin.")
+            st.warning("📸 UYGUNSUZLUK TESPİT EDİLDİ! Lütfen 3 kanıt fotoğrafı yükleyin.")
             f_c1, f_c2, f_c3 = st.columns(3)
             f1 = f_c1.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="op_f1")
             f2 = f_c2.file_uploader("Hata Detayı", type=['jpg', 'png'], key="op_f2")
@@ -99,13 +100,12 @@ if rol == "Üretim Hattı (Operatör)":
                 if f1 and f2 and f3:
                     data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR", "Yönetici Notu": "-"})
                     st.session_state.onay_bekleyenler.append(data)
-                    st.info("Kayıt iletildi. Ömer Bey'in onayı bekleniyor.")
+                    st.info("Kayıt iletildi. Onay bekleniyor.")
                     del st.session_state.gecici_analiz
                     st.rerun()
-                else:
-                    st.error("⚠️ Fotoğraflar eksik!")
+                else: st.error("⚠️ Fotoğraflar eksik!")
         else:
-            if st.button("KAYDI TAMAMLA (YÖNETİCİ ONAYLADI, UYGUNDUR)"):
+            if st.button("KAYDI TAMAMLA (UYGUN)"):
                 data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY", "Yönetici Notu": "-"})
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
                 st.balloons()
@@ -139,6 +139,7 @@ else:
                 fig_line = px.line(df, x="Tarih", y="TRI", markers=True, title="SPC: TRI Skor Trendi")
                 st.plotly_chart(fig_line, use_container_width=True)
             with g2:
+                # Aksiyon renkleri
                 fig_pie = px.pie(df, names="Yönetici Aksiyonu", title="Aksiyon Dağılımı")
                 st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -146,10 +147,20 @@ else:
     st.subheader(f"📥 Onay Bekleyen {len(st.session_state.onay_bekleyenler)} Kayıt")
     
     for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-        with st.expander(f"⚠️ {bekleyen['Parti No']} | Vardiya: {bekleyen['Vardiya']}", expanded=True):
-            st.write(f"**Operatör:** {bekleyen['Operatör']} | **Sistem:** {bekleyen['Sistem']} | **TRI:** {bekleyen['TRI']}")
+        # Expander başlığında renkli ikon
+        icon = "🔴" if bekleyen['Sistem'] == "RED" else "🟡"
+        with st.expander(f"{icon} {bekleyen['Parti No']} | Vardiya: {bekleyen['Vardiya']} | TRI: {bekleyen['TRI']}", expanded=True):
             
-            # FOTOĞRAF GÖRÜNTÜLEME
+            # Detay Tablosu
+            st.write(f"**Operatör:** {bekleyen['Operatör']} | **Sistem:** {bekleyen['Sistem']}")
+            detay_df = pd.DataFrame({
+                "Kategori": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
+                "Adet": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']],
+                "Puan": [bekleyen['P1_P'], bekleyen['P2_P'], bekleyen['P3_P'], bekleyen['P4_P']]
+            })
+            st.table(detay_df)
+            
+            # Fotoğraflar
             st.divider()
             img_c1, img_c2, img_c3 = st.columns(3)
             if 'Foto_1' in bekleyen: img_c1.image(io.BytesIO(bekleyen['Foto_1']), caption="Genel", use_container_width=True)
@@ -158,19 +169,17 @@ else:
             
             st.divider()
             c_a1, c_a2 = st.columns(2)
-            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v63s_{i}")
-            y_not = c_a2.text_input("Yönetici Notu", key=f"v63n_{i}")
+            aks = c_a1.selectbox("Karar", ["Şartlı Kabul ✅", "Kesin Red ❌", "Karantina 📦", "İade 🚛"], key=f"v65s_{i}")
+            y_not = c_a2.text_input("Yönetici Notu", key=f"v65n_{i}")
             
-            if st.button("KARARI KAYDET", key=f"v63b_{i}"):
+            if st.button("KARARI KAYDET", key=f"v65b_{i}"):
                 bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
-                # Arşive geçerken fotoğrafları sil (hafıza koruma)
                 save_data = bekleyen.copy()
                 for f in ['Foto_1', 'Foto_2', 'Foto_3']: save_data.pop(f, None)
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([save_data])])
                 st.session_state.onay_bekleyenler.pop(i)
                 st.rerun()
 
-# --- ARŞİV (HERKESE AÇIK) ---
 if st.session_state.get('admin_logged_in'):
     st.divider()
     st.subheader("📜 Genel Arşiv")
