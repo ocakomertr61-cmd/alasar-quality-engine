@@ -1,109 +1,91 @@
 import streamlit as st
+import pandas as pd
+from datetime import datetime
 
+# --- FONKSİYONLAR ---
 def kalite_motoru_hesapla(F3, G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
-    """
-    Ömer Ocak - Alasar Quality Engine V2.5
-    Tüm güncel limitler ve mantıksal filtreler işlenmiştir.
-    """
-    # I3 Hücresi: Toplam Hatalı Ürün Adedi
     toplam_hata = J3 + K3 + L3 + M3
-    
-    # --- 1. TRI (RISK INDEKSI - T3) HESAPLAMA ---
     if toplam_hata == 0:
         T3 = 0.0
     else:
-        # Ağırlıklı Puan (Payda: 15 kuralı korunuyor)
         temel_oran = ((P3_p * 2) + (Q3_p * 3) + (R3_p * 2) + (S3_p * 2)) / 15
-        
-        # Yoğunluk Cezası Filtresi
-        if P3_p < 4 and Q3_p < 4 and (J3 + K3) < 4:
-            ek_ceza = 0
-        else:
-            ek_ceza = (J3 * 0.03) + (K3 * 0.05)
-        
-        # Toplam Çarpan ve Alt Sınır Bariyeri
+        ek_ceza = (J3 * 0.03) + (K3 * 0.05) if (P3_p >= 4 or Q3_p >= 4 or (J3+K3) >= 4) else 0
         toplam_carpan = 1 + (ek_ceza + (L3 * 0.01) + (M3 * 0.005))
         T3 = max(temel_oran * toplam_carpan, toplam_hata / 20)
 
-    # --- 2. SEVK EDİLEMEZ (RED) FİLTRELERİ ---
     red_mi = (
-        (J3 >= 3 and P3_p >= 3) or          # P1: Hem adet >= 3 Hem Puan >= 3 ise RED
-        (K3 >= 3 and Q3_p >= 3) or          # P2: Hem adet >= 3 Hem Puan >= 3 ise RED
-        (J3 + K3) >= 10 or                  # GÜNCEL: P1+P2 Toplamı >= 10 ise RED
-        R3_p >= 4 or                        # P3 Puanı >= 4 (Montaj)
-        S3_p == 5 or                        # P4 Puanı = 5 (Görsel)
-        T3 >= 5 or                          # TRI Skoru >= 5
-        (F3 > 0 and toplam_hata > (F3 * 0.05)) # Toplam hata sevk miktarının %5'inden fazlaysa
+        (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or 
+        (J3 + K3) >= 10 or R3_p >= 4 or S3_p == 5 or T3 >= 5.0 or 
+        (F3 > 0 and toplam_hata > (F3 * 0.05))
     )
     
-    # --- 3. ŞARTLI KABUL (SARI) FİLTRELERİ ---
     sartli_mi = False
     if not red_mi and toplam_hata > 0:
-        sartli_mi = (
-            T3 > 1.7 or                     # Risk puanı eşiği (Hassasiyet)
-            (J3 + K3) >= 6 or               # P1+P2 Toplamı 6-9 arası ise SARI (Esnetildi)
-            (P3_p >= 3 and Q3_p >= 3 and R3_p >= 3 and S3_p >= 3 and toplam_hata >= 5) or # Yaygın Risk
-            (L3 + M3) > 25                  # Çok fazla hafif hata varsa
-        )
+        sartli_mi = (T3 > 1.7 or (J3 + K3) >= 6 or (L3 + M3) > 25)
 
-    # --- 4. KARAR MERKEZİ ---
-    if red_mi:
-        return "SEVK EDİLEMEZ (RED)", "🔴", T3
-    elif sartli_mi:
-        return "ŞARTLI KABUL (ONAY GEREKLİ)", "🟡", T3
-    else:
-        return "UYGUN (OTOMATİK ONAY)", "🟢", T3
+    if red_mi: return "RED", "🔴", T3
+    elif sartli_mi: return "SARI", "🟡", T3
+    else: return "UYGUN", "🟢", T3
 
-# --- STREAMLIT ARAYÜZ TASARIMI ---
-st.set_page_config(page_title="Alasar Quality Engine V2.5", layout="wide")
-st.title("🛡️ Alasar Quality Engine V2.5")
-st.markdown("---")
+# --- VERİ YÖNETİMİ ---
+if 'denetim_gecmisi' not in st.session_state:
+    st.session_state.denetim_gecmisi = pd.DataFrame(columns=[
+        "Tarih", "Parti No", "Sevk", "Kontrol", "P1", "P2", "P3", "P4", "TRI", "Karar"
+    ])
 
-# Yan Panel - Genel Bilgiler
+# --- UI TASARIMI ---
+st.set_page_config(page_title="Alasar Quality DB", layout="wide")
+st.title("📊 Alasar Quality Engine V3.0 (Veri Kayıtlı)")
+
 with st.sidebar:
-    st.header("📋 Denetim Verileri")
-    f3_input = st.number_input("Toplam Sevk Miktarı (F3)", value=10000, step=100)
-    g3_input = st.number_input("Kontrol Edilen Miktar (G3)", value=500, step=10)
+    st.header("📋 Yeni Denetim Girişi")
+    parti_no = st.text_input("Parti / Lot Numarası", value="LOT-001")
+    f3 = st.number_input("Toplam Sevk (F3)", value=10000)
+    g3 = st.number_input("Kontrol Edilen (G3)", value=500)
     st.divider()
-    st.info("V2.5 Güncellemesi: P1+P2 RED sınırı 10 adede çıkarıldı. 0 hatada sarı yanma sorunu giderildi.")
+    save_button = st.button("💾 DENETİMİ KAYDET", use_container_width=True)
 
-# Ana Ekran - Giriş Alanları
-col1, col2 = st.columns(2)
+c1, c2 = st.columns(2)
+with c1:
+    st.subheader("⚠️ Hata Adetleri")
+    j3, k3, l3, m3 = st.number_input("P1", 0), st.number_input("P2", 0), st.number_input("P3", 0), st.number_input("P4", 0)
+with c2:
+    st.subheader("🎯 Risk Puanları")
+    p3, q3, r3, s3 = st.number_input("P1 Puan", 1.0), st.number_input("P2 Puan", 1.0), st.number_input("P3 Puan", 1.0), st.number_input("P4 Puan", 1.0)
 
-with col1:
-    st.subheader("⚠️ Hata Adetleri (J, K, L, M)")
-    j3_in = st.number_input("P1 (Fonksiyonel) Adet", value=0, min_value=0)
-    k3_in = st.number_input("P2 (Güvenlik) Adet", value=0, min_value=0)
-    l3_in = st.number_input("P3 (Montaj) Adet", value=0, min_value=0)
-    m3_in = st.number_input("P4 (Görsel) Adet", value=0, min_value=0)
+# Hesaplama
+karar, ikon, t3_skor = kalite_motoru_hesapla(f3, g3, j3, k3, l3, m3, p3, q3, r3, s3)
 
-with col2:
-    st.subheader("🎯 Risk Puanları (P, Q, R, S)")
-    p3_p_in = st.number_input("P1 Risk Puanı", value=1.0, min_value=0.0, max_value=5.0, step=1.0)
-    q3_p_in = st.number_input("P2 Risk Puanı", value=1.0, min_value=0.0, max_value=5.0, step=1.0)
-    r3_p_in = st.number_input("P3 Risk Puanı", value=1.0, min_value=0.0, max_value=5.0, step=1.0)
-    s3_p_in = st.number_input("P4 Risk Puanı", value=1.0, min_value=0.0, max_value=5.0, step=1.0)
+# Kaydetme Mantığı
+if save_button:
+    yeni_veri = {
+        "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Parti No": parti_no,
+        "Sevk": f3, "Kontrol": g3,
+        "P1": j3, "P2": k3, "P3": l3, "P4": m3,
+        "TRI": round(t3_skor, 4),
+        "Karar": f"{ikon} {karar}"
+    }
+    st.session_state.denetim_gecmisi = pd.concat([st.session_state.denetim_gecmisi, pd.DataFrame([yeni_veri])], ignore_index=True)
+    st.success(f"{parti_no} başarıyla kaydedildi!")
 
-# Hesaplama ve Sonuç Ekranı
+# --- LİSTELEME VE SİLME ---
 st.divider()
-karar, ikon, t3_skoru = kalite_motoru_hesapla(f3_input, g3_input, j3_in, k3_in, l3_in, m3_in, p3_p_in, q3_p_in, r3_p_in, s3_p_in)
+st.subheader("📜 Denetim Geçmişi ve Kayıtlar")
 
-hky_orani = ((j3_in + k3_in + l3_in + m3_in) / g3_input * 100) if g3_input > 0 else 0
-
-res_col1, res_col2, res_col3 = st.columns(3)
-
-with res_col1:
-    st.metric("TRI (Risk Skoru)", f"{t3_skoru:.4f}")
-with res_col2:
-    st.metric("HKY (Hata Oranı)", f"%{hky_orani:.2f}")
-with res_col3:
-    st.subheader("Final Kararı")
-    st.header(f"{ikon} {karar}")
-
-# Uyarı Mesajları
-if karar == "SEVK EDİLEMEZ (RED)":
-    st.error("DİKKAT: Sevkiyat kritik limitleri aşmıştır. İşlemi durdurun!")
-elif karar == "ŞARTLI KABUL (ONAY GEREKLİ)":
-    st.warning("BİLGİ: Sistem risk tespit etti. Yönetici onayı olmadan sevk edilemez.")
+if not st.session_state.denetim_gecmisi.empty:
+    # Tabloyu Göster
+    st.dataframe(st.session_state.denetim_gecmisi, use_container_width=True)
+    
+    # İşlemler
+    col_del, col_exp = st.columns([1, 5])
+    with col_del:
+        if st.button("🗑️ Tümünü Temizle"):
+            st.session_state.denetim_gecmisi = st.session_state.denetim_gecmisi.iloc[0:0]
+            st.rerun()
+    with col_exp:
+        # Excel'e aktarma butonu için basit CSV indirme
+        csv = st.session_state.denetim_gecmisi.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 Excel/CSV Olarak İndir", csv, "denetim_gecmisi.csv", "text/csv")
 else:
-    st.success("ONAY: Sevkiyat kalite standartlarına uygundur.")
+    st.info("Henüz kayıtlı bir denetim bulunmuyor.")
