@@ -23,11 +23,11 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor
 
 # --- UI ---
-st.set_page_config(page_title="Alasar Workflow V5.6", layout="wide")
+st.set_page_config(page_title="Alasar Workflow V5.7", layout="wide")
 rol = st.sidebar.selectbox("Giriş Yapılan Ekran:", ["Üretim Hattı (Operatör)", "Yönetici Paneli (Ömer Ocak)"])
 
 # ---------------------------------------------------------
-# 1. EKRAN: ÜRETİM HATTI (Net Geri Bildirim)
+# 1. EKRAN: ÜRETİM HATTI
 # ---------------------------------------------------------
 if rol == "Üretim Hattı (Operatör)":
     st.header("🏭 Üretim Hattı Veri Giriş Terminali")
@@ -64,38 +64,36 @@ if rol == "Üretim Hattı (Operatör)":
     if 'gecici_analiz' in st.session_state:
         st.divider()
         data = st.session_state.gecici_analiz
-        
-        # Karar UYGUN ise operatöre kafa karışıklığı yaratmayacak net mesaj
         if data['Sistem'] == "UYGUN":
             st.success("✅ SİSTEM ANALİZİ: UYGUN. Herhangi bir ek onay gerekmemektedir.")
             if st.button("KAYDI TAMAMLA VE ARŞİVE GÖNDER", use_container_width=True):
-                data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY (YÖNETİCİ UYGUN BULDU)", "Yönetici Notu": "-"})
+                data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY (UYGUN)", "Yönetici Notu": "-"})
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
-                st.balloons() # Başarı kutlaması
+                st.balloons()
                 st.success("✅ İŞLEM TAMAMLANDI: YÖNETİCİ ONAYLADI, UYGUNDUR!")
                 del st.session_state.gecici_analiz
-                # 3 saniye bekleyip temizlemesi için rerun eklemiyoruz ki mesajı okusunlar
+                st.rerun()
         else:
-            st.warning(f"⚠️ DİKKAT: Sistem Kararı {data['Sistem']}. Bu kayıt Ömer Bey'in onayına düşecektir.")
+            st.warning(f"⚠️ DİKKAT: Sistem Kararı {data['Sistem']}. Onaya gönderilecektir.")
             con1, con2 = st.columns(2)
             if con1.button("✅ ONAYA GÖNDER", use_container_width=True):
                 st.session_state.onay_bekleyenler.append(data)
-                st.info("Kayıt yönetici paneline iletildi.")
+                st.info("Kayıt iletildi.")
                 del st.session_state.gecici_analiz
                 st.rerun()
-            if con2.button("❌ İPTAL ET / DÜZELT", use_container_width=True):
+            if con2.button("❌ İPTAL ET", use_container_width=True):
                 del st.session_state.gecici_analiz
                 st.rerun()
 
 # ---------------------------------------------------------
-# 2. EKRAN: YÖNETİCİ PANELİ (Giriş Kilidi)
+# 2. EKRAN: YÖNETİCİ PANELİ (Sadece Onay İşlemleri Şifreli)
 # ---------------------------------------------------------
 else:
     if 'admin_logged_in' not in st.session_state:
         st.session_state.admin_logged_in = False
 
     if not st.session_state.admin_logged_in:
-        st.error("🚫 YETKİ ALANINIZ DIŞINDA!")
+        st.error("🚫 ONALAMA PANELİ KİLİTLİ")
         admin_pwd = st.text_input("Yönetici Parolası:", type="password")
         if st.button("GİRİŞ YAP"):
             if admin_pwd == ADMIN_PASSWORD:
@@ -104,7 +102,7 @@ else:
             else: st.error("Hatalı Parola!")
         st.stop()
 
-    if st.sidebar.button("OTURUMU KAPAT"):
+    if st.sidebar.button("YÖNETİCİ ÇIKIŞI"):
         st.session_state.admin_logged_in = False
         st.rerun()
 
@@ -113,24 +111,22 @@ else:
         st.info("Onay bekleyen kayıt yok.")
     else:
         for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-            with st.expander(f"📌 PARTİ: {bekleyen['Parti No']} | Operatör: {bekleyen['Operatör']} | {bekleyen['Sistem']}", expanded=True):
+            with st.expander(f"📌 PARTİ: {bekleyen['Parti No']} | Operatör: {bekleyen['Operatör']}", expanded=True):
                 st.table(pd.DataFrame({
-                    "Kategori": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
+                    "Kategori": ["P1", "P2", "P3", "P4"],
                     "Hata Adeti": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']],
                     "Risk Puanı": [bekleyen['P1_P'], bekleyen['P2_P'], bekleyen['P3_P'], bekleyen['P4_P']]
                 }))
                 st.info(f"📝 **Operatör Notu:** {bekleyen['Operatör Notu']}")
                 
-                # Hızlı Onay Butonu
                 if st.button(f"⚡ SİSTEMİN '{bekleyen['Sistem']}' KARARINI DİREKT ONAYLA", key=f"q_{i}"):
-                    bekleyen.update({"Yönetici Aksiyonu": f"YÖNETİCİ ONAYLADI, UYGUNDUR ({bekleyen['Sistem']})", "Yönetici Notu": "Hızlı Onay"})
+                    bekleyen.update({"Yönetici Aksiyonu": f"YÖNETİCİ ONAYLADI ({bekleyen['Sistem']})", "Yönetici Notu": "Hızlı Onay"})
                     st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([bekleyen])])
                     st.session_state.onay_bekleyenler.pop(i)
                     st.rerun()
 
-                st.write("Veya manuel aksiyon seçin:")
                 c1, c2 = st.columns([2, 2])
-                secilen = c1.selectbox("Aksiyon", ["Şartlı Kabul ✅", "Kesin Red ❌", "%100 Ayıklama 🔍", "Karantina 📦", "İade 🚛"], key=f"s_{i}")
+                secilen = c1.selectbox("Manuel Aksiyon", ["Şartlı Kabul ✅", "Kesin Red ❌", "%100 Ayıklama 🔍", "Karantina 📦", "İade 🚛"], key=f"s_{i}")
                 y_notu = c2.text_input("Yönetici Notu", key=f"n_{i}")
                 if st.button(f"KARARI KAYDET: {bekleyen['Parti No']}", key=f"b_{i}"):
                     bekleyen.update({"Yönetici Aksiyonu": secilen, "Yönetici Notu": y_notu if y_notu else "-"})
@@ -138,6 +134,13 @@ else:
                     st.session_state.onay_bekleyenler.pop(i)
                     st.rerun()
 
-    st.divider()
-    st.subheader("📜 Genel Kalite Denetim Arşivi")
+# ---------------------------------------------------------
+# ORTAK ALAN: GENEL ARŞİV (HERKES GÖREBİLİR)
+# ---------------------------------------------------------
+st.divider()
+st.subheader("📜 Genel Kalite Denetim Arşivi (Tüm Kayıtlar)")
+if not st.session_state.ana_veritabani.empty:
+    # Arşivi herkes görsün diye 'if' bloğunun dışına çıkardık
     st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True, hide_index=True)
+else:
+    st.write("Henüz kayıtlı veri bulunmamaktadır.")
