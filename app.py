@@ -36,7 +36,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- 4. OTURUM VE PANEL KONTROLÜ ---
-st.set_page_config(page_title="Alasar Quality Engine V16.1", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V16.2", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -66,6 +66,24 @@ if st.session_state.aktif_user is None:
             else: st.error("Yetkisiz Şifre!")
     st.stop()
 
+# --- ANALİZ FONKSİYONU (ORTAK KULLANIM) ---
+def analitik_panel_goster(df, baslik):
+    st.subheader(baslik)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Toplam Parti", len(df))
+    m2.metric("Ortalama TRI", round(df['TRI'].mean(), 2))
+    uyg_orani = (len(df[df['Yönetici Aksiyonu'].str.contains("Kabul|OTOMATİK", na=False)]) / len(df)) * 100
+    m3.metric("Uygunluk Oranı", f"%{round(uyg_orani, 1)}")
+    m4.metric("Toplam P1 Hatası", int(df['P1_A'].sum()))
+    
+    g1, g2 = st.columns(2)
+    with g1:
+        st.subheader("Karar Dağılımı")
+        st.bar_chart(df['Yönetici Aksiyonu'].value_counts())
+    with g2:
+        st.subheader("Risk Dağılımı")
+        st.pie_chart(df['Sistem'].value_counts()) if hasattr(st, "pie_chart") else st.write(df['Sistem'].value_counts())
+
 u_data = st.session_state.user_db[st.session_state.aktif_user]
 st.sidebar.title(f"📍 {u_data['role']}")
 st.sidebar.write(f"Hoş Geldiniz: {u_data['full_name']}")
@@ -74,7 +92,8 @@ if st.sidebar.button("Oturumu Kapat / Geri Dön"):
     st.session_state.aktif_user = None
     st.rerun()
 
-# --- PANEL 1: ÜRETİM HATTI ---
+# --- ANA PANEL AYRIMLARI (HATA BURADAYDI, DÜZELTİLDİ) ---
+
 if u_data['role'] == "Üretim-Operatör":
     st.header("🏭 Üretim Hattı Giriş Terminali")
     with st.form("veri_giris_formu"):
@@ -120,29 +139,9 @@ if u_data['role'] == "Üretim-Operatör":
                 st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
                 st.success("✅ arşivlendi."); del st.session_state.gecici_analiz; time.sleep(1.5); st.rerun()
 
-# --- ANALİZ FONKSİYONU (ORTAK KULLANIM) ---
-def analitik_panel_goster(df, baslik):
-    st.subheader(f"📊 {baslik}")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Toplam Parti", len(df))
-    m2.metric("Ortalama TRI", round(df['TRI'].mean(), 2))
-    uyg_orani = (len(df[df['Yönetici Aksiyonu'].str.contains("Kabul|OTOMATİK", na=False)]) / len(df)) * 100
-    m3.metric("Uygunluk Oranı", f"%{round(uyg_orani, 1)}")
-    m4.metric("Toplam P1 Hatası", int(df['P1_A'].sum()))
-    
-    g1, g2 = st.columns(2)
-    with g1:
-        st.subheader("Karar Dağılımı")
-        st.bar_chart(df['Yönetici Aksiyonu'].value_counts())
-    with g2:
-        st.subheader("Risk Dağılımı")
-        st.pie_chart(df['Sistem'].value_counts()) if hasattr(st, "pie_chart") else st.write(df['Sistem'].value_counts())
-
-# --- PANEL 2: KALİTE MÜDÜRÜ ---
 elif u_data['role'] == "Kalite Müdürü":
-    # 1. İstatistikler (Müdür de görsün istediniz)
     if not st.session_state.ana_veritabani.empty:
-        analitik_panel_goster(st.session_state.ana_veritabani, "Güncel Kalite Performansı (Özet)")
+        analitik_panel_goster(st.session_state.ana_veritabani, "📊 Güncel Kalite Performansı (Özet)")
         st.divider()
 
     st.header("⚖️ Onay Bekleyen Kritik Kayıtlar")
@@ -154,7 +153,6 @@ elif u_data['role'] == "Kalite Müdürü":
             if 'Foto_1' in bekleyen: img_c1.image(io.BytesIO(bekleyen['Foto_1']), caption="Genel")
             if 'Foto_2' in bekleyen: img_c2.image(io.BytesIO(bekleyen['Foto_2']), caption="Hata")
             if 'Foto_3' in bekleyen: img_c3.image(io.BytesIO(bekleyen['Foto_3']), caption="Etiket")
-            
             st.divider()
             c_a1, c_a2 = st.columns(2)
             aks = c_a1.selectbox("Nihai Aksiyon", [
@@ -176,7 +174,6 @@ elif u_data['role'] == "Kalite Müdürü":
     st.subheader("📜 Detaylı Arşiv Listesi")
     st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True)
 
-# --- PANEL 3: GENEL MÜDÜR ---
 elif u_data['role'] == "Genel Müdür":
     st.header("📈 Kalite Stratejik Analitik Paneli")
     if not st.session_state.ana_veritabani.empty:
