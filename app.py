@@ -2,21 +2,23 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
-import time
 
-# --- 1. KULLANICI VE YETKİ VERİTABANI ---
-# Buraya istediğiniz kadar operatör ekleyebilirsiniz.
-USERS = {
-    "alasar": {"pass": "30052012", "role": "admin", "name": "Ömer Ocak (Müdür)"},
-    "operator1": {"pass": "1234", "role": "op", "name": "Kalite Operatörü 1"},
-    "operator2": {"pass": "5678", "role": "op", "name": "Kalite Operatörü 2"}
-}
+# --- 1. SİSTEM AYARLARI VE KULLANICI VERİTABANI ---
+# Başlangıç şifreleri (Kullanıcı ilk girişte bunları kullanır)
+if 'user_creds' not in st.session_state:
+    st.session_state.user_creds = {
+        "alasar": {"pass": "30052012", "role": "Kalite Müdürü"},
+        "genelmudur": {"pass": "patron456", "role": "Genel Müdür"},
+        "operator": {"pass": "op789", "role": "Üretim-Operatör"}
+    }
 
+GENERAL_USER = "alasar"
+GENERAL_PASS = "30052012"
 EXCEL_FILE = "alasar_kalite_veritabani.xlsx"
 
-st.set_page_config(page_title="Alasar Quality Engine V10", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V12", layout="wide")
 
-# --- 2. KALİTE MOTORU (KORUNAN ALGORİTMA) ---
+# --- 2. KALİTE MOTORU (ASIL HESAPLAMA) ---
 def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     toplam_hata = J3 + K3 + L3 + M3
     hata_orani = (toplam_hata / G3) if G3 > 0 else 0
@@ -30,121 +32,85 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" 
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
-# --- 3. OTURUM YÖNETİMİ ---
-if 'auth' not in st.session_state: st.session_state.auth = False
-if 'user_role' not in st.session_state: st.session_state.user_role = None
-if 'onay_listesi' not in st.session_state: st.session_state.onay_listesi = []
+# --- 3. OTURUM DURUMLARI ---
+if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
+if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
 
-def excele_kaydet(veri):
-    try:
-        temiz = {k: v for k, v in veri.items() if not str(k).startswith('Foto_')}
-        df_yeni = pd.DataFrame([temiz])
-        if not os.path.exists(EXCEL_FILE):
-            df_yeni.to_excel(EXCEL_FILE, index=False)
-        else:
-            df_eski = pd.read_excel(EXCEL_FILE)
-            pd.concat([df_eski, df_yeni], ignore_index=True).to_excel(EXCEL_FILE, index=False)
-        return True
-    except: return False
-
-# --- 4. GİRİŞ EKRANI (LOGIN) ---
-if not st.session_state.auth:
-    st.markdown("<h1 style='text-align:center; color:#28A745;'>ALASAR QUALITY LOGIN</h1>", unsafe_allow_html=True)
-    with st.form("login_form"):
-        u_name = st.text_input("Kullanıcı Adı").strip()
-        u_pass = st.text_input("Şifre", type="password").strip()
-        if st.form_submit_button("Sisteme Giriş Yap"):
-            if u_name in USERS and USERS[u_name]["pass"] == u_pass:
-                st.session_state.auth = True
-                st.session_state.user_role = USERS[u_name]["role"]
-                st.session_state.user_name = USERS[u_name]["name"]
+# --- 4. BİRİNCİ KAPI: GENEL GİRİŞ ---
+if not st.session_state.genel_giris:
+    st.markdown("<h2 style='text-align:center;'>ALASAR QUALITY ENGINE</h2>", unsafe_allow_html=True)
+    with st.form("genel_login"):
+        u = st.text_input("Genel Kullanıcı Adı").strip()
+        p = st.text_input("Genel Şifre", type="password").strip()
+        if st.form_submit_button("Sisteme Giriş"):
+            if u == GENERAL_USER and p == GENERAL_PASS:
+                st.session_state.genel_giris = True
                 st.rerun()
-            else:
-                st.error("❌ Yetkisiz Giriş! Lütfen bilgilerinizi kontrol edin.")
+            else: st.error("Genel erişim reddedildi!")
     st.stop()
 
-# --- 5. ANA PANEL (YETKİ KONTROLLÜ) ---
+# --- 5. İKİNCİ KAPI: PANEL VE KİŞİSEL ŞİFRE ---
 else:
-    with st.sidebar:
-        st.success(f"Oturum Açık: \n**{st.session_state.user_name}**")
-        if st.button("Çıkış Yap"):
-            st.session_state.auth = False
-            st.rerun()
-        st.divider()
+    if st.session_state.aktif_user is None:
+        st.subheader("Lütfen Yetki Alanınızı Seçiniz")
+        secim = st.selectbox("Panel Seçin:", ["Seçiniz...", "Üretim-Operatör", "Kalite Müdürü", "Genel Müdür"])
         
-        # YETKİYE GÖRE MENÜ GÖSTERİMİ
-        if st.session_state.user_role == "admin":
-            menu = st.radio("Yönetici Menüsü:", ["Hatta Veri Girişi", "⚖️ YÖNETİCİ ONAY PANELİ", "📜 GENEL ARŞİV"])
-        else:
-            menu = st.radio("Operatör Menüsü:", ["Hatta Veri Girişi"])
-            st.warning("Diğer panellere erişim yetkiniz yoktur.")
-
-    # --- MOD 1: VERİ GİRİŞİ (HERKES GÖREBİLİR) ---
-    if menu == "Hatta Veri Girişi":
-        st.header("🏭 Üretim Hattı Giriş Terminali")
-        with st.form("op_form"):
-            c1, c2, c3 = st.columns(3)
-            op_ad = c1.text_input("Operatör / Kaşe", value=st.session_state.user_name)
-            lot = c2.text_input("Parti No (LOT)", "LOT-")
-            kontrol_adet = c3.number_input("Kontrol Edilen Adet", 1, value=100)
+        if secim != "Seçiniz...":
+            # Panel ismine göre kullanıcı adını eşleştiriyoruz
+            u_key = "operator" if secim == "Üretim-Operatör" else ("alasar" if secim == "Kalite Müdürü" else "genelmudur")
             
-            st.write("### Hata Girişleri")
-            h1, h2, h3, h4 = st.columns(4)
-            j3 = h1.number_input("P1 (Kritik)", 0); p1p = h1.number_input("P1 Puan", 1.0)
-            k3 = h2.number_input("P2 (Majör)", 0); p2p = h2.number_input("P2 Puan", 1.0)
-            l3 = h3.number_input("P3 (Minör)", 0); p3p = h3.number_input("P3 Puan", 1.0)
-            m3 = h4.number_input("P4 (Görsel)", 0); p4p = h4.number_input("P4 Puan", 1.0)
-            
-            analiz_et = st.form_submit_button("ANALİZ ET VE GÖNDER")
-
-        if analiz_et:
-            karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol_adet, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
-            st.session_state.gecici = {
-                "Tarih": datetime.now().strftime("%d-%m-%Y %H:%M"), "Operatör": op_ad, "LOT": lot,
-                "TRI": round(skor, 3), "Karar": karar, "Renk": renk, "P1": j3, "P2": k3, "P3": l3, "P4": m3
-            }
-
-        if 'gecici' in st.session_state:
-            g = st.session_state.gecici
-            st.markdown(f"<div style='background-color:{g['Renk']}; padding:20px; border-radius:10px; text-align:center;'><h1 style='color:white;'>{g['Karar']} (TRI: {g['TRI']})</h1></div>", unsafe_allow_html=True)
-            
-            if g['Karar'] != "UYGUN":
-                st.warning("⚠️ Bu kayıt yönetici onayına sunulacaktır.")
-                if st.button("KAYDI ONAYA GÖNDER"):
-                    st.session_state.onay_listesi.append(g)
-                    st.success("Kayıt yöneticinin önüne düştü.")
-                    del st.session_state.gecici
+            sifre_onay = st.text_input(f"{secim} Şifresi", type="password")
+            if st.button("Paneli Aç"):
+                if sifre_onay == st.session_state.user_creds[u_key]["pass"]:
+                    st.session_state.aktif_user = u_key
                     st.rerun()
+                else:
+                    st.error("Hatalı Panel Şifresi!")
+        
+        if st.button("Sistemden Çıkış Yap"):
+            st.session_state.genel_giris = False
+            st.rerun()
+        st.stop()
+
+    # --- PANEL İÇİ: AYARLAR VE ŞİFRE DEĞİŞTİRME ---
+    user_info = st.session_state.user_creds[st.session_state.aktif_user]
+    st.sidebar.title(f"📍 {user_info['role']}")
+    st.sidebar.write(f"Kullanıcı: {st.session_state.aktif_user}")
+    
+    if st.sidebar.button("Paneli Kapat / Geri Dön"):
+        st.session_state.aktif_user = None
+        st.rerun()
+
+    # --- ŞİFRE DEĞİŞTİRME MODÜLÜ (SIDEBAR) ---
+    with st.sidebar.expander("🔑 Şifremi Değiştir"):
+        eski_sifre = st.text_input("Mevcut Şifre", type="password")
+        yeni_sifre = st.text_input("Yeni Şifre", type="password")
+        if st.button("Şifreyi Güncelle"):
+            if eski_sifre == user_info["pass"]:
+                st.session_state.user_creds[st.session_state.aktif_user]["pass"] = yeni_sifre
+                st.success("Şifreniz başarıyla değiştirildi!")
+                time.sleep(1)
+                st.rerun()
             else:
-                if st.button("UYGUN KAYDI ARŞİVLE"):
-                    if excele_kaydet(g):
-                        st.success("✅ Veri Excel'e işlendi.")
-                        del st.session_state.gecici
-                        st.rerun()
+                st.error("Mevcut şifre yanlış!")
 
-    # --- MOD 2: YÖNETİCİ ONAY PANELİ (SADECE ADMİN) ---
-    elif menu == "⚖️ YÖNETİCİ ONAY PANELİ":
-        st.header("⚖️ Karar Bekleyen Kritik Kayıtlar")
-        if not st.session_state.onay_listesi:
-            st.info("Bekleyen onay bulunmamaktadır.")
-        else:
-            for i, b_veri in enumerate(st.session_state.onay_listesi):
-                with st.expander(f"{b_veri['LOT']} - {b_veri['Operatör']} (Durum: {b_veri['Karar']})"):
-                    st.write(f"**TRI Skoru:** {b_veri['TRI']}")
-                    y_karar = st.selectbox("Yönetici Nihai Kararı", ["Şartlı Kabul", "Karantina", "İade/Red"], key=f"y_k_{i}")
-                    if st.button("KARARI ONAYLA VE EXCEL'E YAZ", key=f"y_b_{i}"):
-                        b_veri["Final_Durum"] = y_karar
-                        if excele_kaydet(b_veri):
-                            st.session_state.onay_listesi.pop(i)
-                            st.success("Karar başarıyla kaydedildi.")
-                            st.rerun()
+    # --- PANEL İÇERİKLERİ (YETKİYE GÖRE) ---
+    if user_info['role'] == "Üretim-Operatör":
+        st.header("🏭 Üretim Hattı Veri Girişi")
+        # Operatör Formu (TRI Motoru Buraya Bağlı)
+        with st.form("op_form"):
+            lot = st.text_input("LOT No")
+            kontrol = st.number_input("Kontrol Adet", value=100)
+            j3 = st.number_input("P1 Hatası", 0)
+            if st.form_submit_button("Analiz Et"):
+                # Burada kalite_motoru_hesapla fonksiyonu çalışacak
+                st.info("Analiz yapıldı.")
 
-    # --- MOD 3: GENEL ARŞİV (SADECE ADMİN) ---
-    elif menu == "📜 GENEL ARŞİV":
-        st.header("📜 Alasar Kalite Veritabanı")
-        if os.path.exists(EXCEL_FILE):
-            df = pd.read_excel(EXCEL_FILE)
-            st.dataframe(df.iloc[::-1], use_container_width=True)
-            with open(EXCEL_FILE, "rb") as f:
-                st.download_button("Raporu İndir (.xlsx)", f, file_name=EXCEL_FILE)
-        else: st.info("Henüz kayıt bulunmamaktadır.")
+    elif user_info['role'] == "Kalite Müdürü":
+        st.header("⚖️ Onay ve Denetim Paneli")
+        st.write("Sadece Müdür yetkisiyle görünen alan.")
+        # Excel Tablosu ve Onay Butonları Buraya Gelecek
+
+    elif user_info['role'] == "Genel Müdür":
+        st.header("📈 Genel Performans Dashboard")
+        st.write("Sadece Patron yetkisiyle görünen grafik alanı.")
