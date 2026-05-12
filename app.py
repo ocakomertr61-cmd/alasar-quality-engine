@@ -22,7 +22,7 @@ if 'ana_veritabani' not in st.session_state:
 if 'onay_bekleyenler' not in st.session_state:
     st.session_state.onay_bekleyenler = [] 
 
-# --- 3. KALİTE MOTORU (ORİJİNAL V6.7) ---
+# --- 3. KALİTE MOTORU ---
 def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     toplam_hata = J3 + K3 + L3 + M3
     hata_orani = (toplam_hata / G3) if G3 > 0 else 0
@@ -35,8 +35,8 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" 
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
-# --- 4. OTURUM VE PANEL KONTROLÜ ---
-st.set_page_config(page_title="Alasar Quality Engine V16.2", layout="wide")
+# --- 4. OTURUM AYARLARI ---
+st.set_page_config(page_title="Alasar Quality Engine V16.3", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -66,7 +66,7 @@ if st.session_state.aktif_user is None:
             else: st.error("Yetkisiz Şifre!")
     st.stop()
 
-# --- ANALİZ FONKSİYONU (ORTAK KULLANIM) ---
+# --- ANALİTİK PANEL FONKSİYONU ---
 def analitik_panel_goster(df, baslik):
     st.subheader(baslik)
     m1, m2, m3, m4 = st.columns(4)
@@ -92,10 +92,22 @@ if st.sidebar.button("Oturumu Kapat / Geri Dön"):
     st.session_state.aktif_user = None
     st.rerun()
 
-# --- ANA PANEL AYRIMLARI (HATA BURADAYDI, DÜZELTİLDİ) ---
-
+# --- PANEL 1: ÜRETİM-OPERATÖR ---
 if u_data['role'] == "Üretim-Operatör":
     st.header("🏭 Üretim Hattı Giriş Terminali")
+    
+    # Başarı Mesajı Gösterimi (Flag kontrolü ile)
+    if 'kayit_basarili' in st.session_state and st.session_state.kayit_basarili:
+        st.markdown("""
+            <div style="background-color:#D4EDDA; border: 2px solid #28A745; padding:40px; border-radius:15px; text-align:center; margin-bottom:20px;">
+                <h1 style="color:#155724; font-size: 45px;">✅ KAYDINIZ BAŞARIYLA GÖNDERİLMİŞTİR.</h1>
+                <h2 style="color:#155724;">Yönetici kararı beklenmektedir.</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        time.sleep(3)
+        st.session_state.kayit_basarili = False
+        st.rerun()
+
     with st.form("veri_giris_formu"):
         c1, c2, c3 = st.columns(3)
         lot = c1.text_input("Parti No", "LOT-")
@@ -121,24 +133,55 @@ if u_data['role'] == "Üretim-Operatör":
 
     if 'gecici_analiz' in st.session_state:
         data = st.session_state.gecici_analiz
-        st.markdown(f"<div style='background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center;'><h1 style='color:white;'>KARAR: {data['Sistem']} (TRI: {data['TRI']})</h1></div>", unsafe_allow_html=True)
-        if data['Sistem'] != "UYGUN":
-            st.warning("📸 Lütfen 3 kanıt fotoğrafı yükleyin.")
-            f1 = st.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="f1")
-            f2 = st.file_uploader("Hata Detayı", type=['jpg', 'png'], key="f2")
-            f3 = st.file_uploader("Etiket", type=['jpg', 'png'], key="f3")
-            if st.button("KAYDI YÖNETİCİYE GÖNDER"):
-                if f1 and f2 and f3:
-                    data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read(), "Yönetici Aksiyonu": "BEKLİYOR"})
-                    st.session_state.onay_bekleyenler.append(data)
-                    st.success("✅ Kayıt iletildi."); del st.session_state.gecici_analiz; time.sleep(1.5); st.rerun()
-                else: st.error("Fotoğraflar eksik!")
-        else:
-            if st.button("KAYDI TAMAMLA (UYGUN)"):
-                data.update({"Yönetici Aksiyonu": "OTOMATİK ONAY"})
-                st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
-                st.success("✅ arşivlendi."); del st.session_state.gecici_analiz; time.sleep(1.5); st.rerun()
+        st.markdown(f"<div style='background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center; margin-top:10px;'><h1 style='color:white;'>ÖN ANALİZ SONUCU: {data['Sistem']} (TRI: {data['TRI']})</h1></div>", unsafe_allow_html=True)
+        
+        st.subheader("🛡️ Gönderim Onayı ve Kanıtlar")
+        col_onay1, col_onay2 = st.columns([2, 1])
+        
+        with col_onay1:
+            if data['Sistem'] != "UYGUN":
+                st.warning("⚠️ Kritik risk tespit edildi. Lütfen 3 adet fotoğraf yükleyiniz.")
+                f1 = st.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="f1")
+                f2 = st.file_uploader("Hata Detayı", type=['jpg', 'png'], key="f2")
+                f3 = st.file_uploader("Etiket", type=['jpg', 'png'], key="f3")
+            else:
+                st.info("Parti uygun görünüyor. Fotoğraf yüklemek opsiyoneldir.")
+                f1 = f2 = f3 = None
 
+            onay_box = st.checkbox("Girdiğim verilerin doğruluğunu onaylıyorum.")
+        
+        with col_onay2:
+            st.write("### İşlem Seçiniz")
+            btn_gonder = st.button("✅ KAYDI YÖNETİCİYE GÖNDER", use_container_width=True)
+            btn_iptal = st.button("❌ İŞLEMİ İPTAL ET VE SIFIRLA", use_container_width=True)
+
+            if btn_iptal:
+                del st.session_state.gecici_analiz
+                st.error("Veriler temizlendi. Form sıfırlandı.")
+                time.sleep(1)
+                st.rerun()
+
+            if btn_gonder:
+                if not onay_box:
+                    st.error("Lütfen önce 'Uygundur Onaylıyorum' kutucuğunu işaretleyin!")
+                elif data['Sistem'] != "UYGUN" and (not f1 or not f2 or not f3):
+                    st.error("RED veya SARI kararlarda 3 fotoğraf yüklemek zorunludur!")
+                else:
+                    # Kayıt Hazırlama
+                    if f1: data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read()})
+                    data.update({"Yönetici Aksiyonu": "BEKLİYOR" if data['Sistem'] != "UYGUN" else "OTOMATİK ONAY"})
+                    
+                    if data['Sistem'] == "UYGUN":
+                        st.session_state.ana_veritabani = pd.concat([st.session_state.ana_veritabani, pd.DataFrame([data])])
+                    else:
+                        st.session_state.onay_bekleyenler.append(data)
+                    
+                    # Başarı Durumu
+                    del st.session_state.gecici_analiz
+                    st.session_state.kayit_basarili = True
+                    st.rerun()
+
+# --- PANEL 2: KALİTE MÜDÜRÜ ---
 elif u_data['role'] == "Kalite Müdürü":
     if not st.session_state.ana_veritabani.empty:
         analitik_panel_goster(st.session_state.ana_veritabani, "📊 Güncel Kalite Performansı (Özet)")
@@ -174,6 +217,7 @@ elif u_data['role'] == "Kalite Müdürü":
     st.subheader("📜 Detaylı Arşiv Listesi")
     st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True)
 
+# --- PANEL 3: GENEL MÜDÜR ---
 elif u_data['role'] == "Genel Müdür":
     st.header("📈 Kalite Stratejik Analitik Paneli")
     if not st.session_state.ana_veritabani.empty:
