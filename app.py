@@ -36,7 +36,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- 4. OTURUM AYARLARI ---
-st.set_page_config(page_title="Alasar Quality Engine V16.3", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V16.4", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -96,15 +96,15 @@ if st.sidebar.button("Oturumu Kapat / Geri Dön"):
 if u_data['role'] == "Üretim-Operatör":
     st.header("🏭 Üretim Hattı Giriş Terminali")
     
-    # Başarı Mesajı Gösterimi (Flag kontrolü ile)
+    # DEV BAŞARI MESAJI (6 Saniye Görünür)
     if 'kayit_basarili' in st.session_state and st.session_state.kayit_basarili:
         st.markdown("""
-            <div style="background-color:#D4EDDA; border: 2px solid #28A745; padding:40px; border-radius:15px; text-align:center; margin-bottom:20px;">
-                <h1 style="color:#155724; font-size: 45px;">✅ KAYDINIZ BAŞARIYLA GÖNDERİLMİŞTİR.</h1>
-                <h2 style="color:#155724;">Yönetici kararı beklenmektedir.</h2>
+            <div style="background-color:#28A745; border: 5px solid #1e7e34; padding:60px; border-radius:25px; text-align:center; margin-bottom:30px; box-shadow: 0px 10px 20px rgba(0,0,0,0.2);">
+                <h1 style="color:white; font-size: 55px; font-weight: bold; margin-bottom:10px;">✅ KAYDINIZ BAŞARIYLA GÖNDERİLMİŞTİR.</h1>
+                <h2 style="color:#f8f9fa; font-size: 30px;">Yönetici kararı beklenmektedir. Sistem 6 saniye içinde sıfırlanacaktır...</h2>
             </div>
         """, unsafe_allow_html=True)
-        time.sleep(3)
+        time.sleep(6)
         st.session_state.kayit_basarili = False
         st.rerun()
 
@@ -133,7 +133,7 @@ if u_data['role'] == "Üretim-Operatör":
 
     if 'gecici_analiz' in st.session_state:
         data = st.session_state.gecici_analiz
-        st.markdown(f"<div style='background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center; margin-top:10px;'><h1 style='color:white;'>ÖN ANALİZ SONUCU: {data['Sistem']} (TRI: {data['TRI']})</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background-color:{data['Renk']}; padding:25px; border-radius:15px; text-align:center; margin-top:15px; border: 2px solid white;'><h1 style='color:white; font-size: 40px;'>ÖN ANALİZ: {data['Sistem']} (TRI: {data['TRI']})</h1></div>", unsafe_allow_html=True)
         
         st.subheader("🛡️ Gönderim Onayı ve Kanıtlar")
         col_onay1, col_onay2 = st.columns([2, 1])
@@ -148,12 +148,12 @@ if u_data['role'] == "Üretim-Operatör":
                 st.info("Parti uygun görünüyor. Fotoğraf yüklemek opsiyoneldir.")
                 f1 = f2 = f3 = None
 
-            onay_box = st.checkbox("Girdiğim verilerin doğruluğunu onaylıyorum.")
+            onay_box = st.checkbox("Girdiğim verilerin doğruluğunu onaylıyorum. (UYGUNDUR)", key="final_check")
         
         with col_onay2:
             st.write("### İşlem Seçiniz")
-            btn_gonder = st.button("✅ KAYDI YÖNETİCİYE GÖNDER", use_container_width=True)
-            btn_iptal = st.button("❌ İŞLEMİ İPTAL ET VE SIFIRLA", use_container_width=True)
+            btn_gonder = st.button("🚀 KAYDI YÖNETİCİYE GÖNDER", use_container_width=True)
+            btn_iptal = st.button("🗑️ TÜMÜNÜ İPTAL ET / SIFIRLA", use_container_width=True)
 
             if btn_iptal:
                 del st.session_state.gecici_analiz
@@ -163,11 +163,10 @@ if u_data['role'] == "Üretim-Operatör":
 
             if btn_gonder:
                 if not onay_box:
-                    st.error("Lütfen önce 'Uygundur Onaylıyorum' kutucuğunu işaretleyin!")
+                    st.error("Lütfen 'Uygundur Onaylıyorum' kutucuğunu işaretleyin!")
                 elif data['Sistem'] != "UYGUN" and (not f1 or not f2 or not f3):
                     st.error("RED veya SARI kararlarda 3 fotoğraf yüklemek zorunludur!")
                 else:
-                    # Kayıt Hazırlama
                     if f1: data.update({"Foto_1": f1.read(), "Foto_2": f2.read(), "Foto_3": f3.read()})
                     data.update({"Yönetici Aksiyonu": "BEKLİYOR" if data['Sistem'] != "UYGUN" else "OTOMATİK ONAY"})
                     
@@ -176,7 +175,6 @@ if u_data['role'] == "Üretim-Operatör":
                     else:
                         st.session_state.onay_bekleyenler.append(data)
                     
-                    # Başarı Durumu
                     del st.session_state.gecici_analiz
                     st.session_state.kayit_basarili = True
                     st.rerun()
@@ -189,13 +187,22 @@ elif u_data['role'] == "Kalite Müdürü":
 
     st.header("⚖️ Onay Bekleyen Kritik Kayıtlar")
     if not st.session_state.onay_bekleyenler: st.info("Şu an bekleyen bir kayıt yok.")
+    
     for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-        with st.expander(f"📌 {bekleyen['Parti No']} | TRI: {bekleyen['TRI']}"):
-            st.table(pd.DataFrame({"Hata": ["P1","P2","P3","P4"], "Adet": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']]}))
+        with st.expander(f"📌 {bekleyen['Parti No']} | TRI: {bekleyen['TRI']} | Operatör: {bekleyen['Operatör']}"):
+            # HATA VE PUAN DETAY TABLOSU (DÜZELTİLDİ)
+            detay_data = {
+                "Hata Sınıfı": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
+                "Hata Adedi": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']],
+                "Risk Puanı (Ağırlık)": [bekleyen['P1_P'], bekleyen['P2_P'], bekleyen['P3_P'], bekleyen['P4_P']]
+            }
+            st.table(pd.DataFrame(detay_data))
+            
             img_c1, img_c2, img_c3 = st.columns(3)
             if 'Foto_1' in bekleyen: img_c1.image(io.BytesIO(bekleyen['Foto_1']), caption="Genel")
             if 'Foto_2' in bekleyen: img_c2.image(io.BytesIO(bekleyen['Foto_2']), caption="Hata")
             if 'Foto_3' in bekleyen: img_c3.image(io.BytesIO(bekleyen['Foto_3']), caption="Etiket")
+            
             st.divider()
             c_a1, c_a2 = st.columns(2)
             aks = c_a1.selectbox("Nihai Aksiyon", [
