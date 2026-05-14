@@ -29,31 +29,41 @@ def veriyi_excelden_yukle():
 # --- GRAFİK VE ANALİZ MODÜLÜ ---
 def grafikleri_ciz(df, baslik):
     if df.empty:
-        st.info("Grafik oluşturmak için henüz yeterli veri bulunmuyor.")
+        st.info("Analiz edilecek veri henüz yok.")
         return
 
     st.subheader(baslik)
-    # Üst Özet Kartları
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Toplam Kayıt", len(df))
-    c2.metric("Ortalama TRI", f"{df['TRI'].mean():.2f}")
     
-    # Uygunluk hesaplama (Kabul edilenler / Toplam)
-    onay_kelimeleri = ["Kabul", "UYGUN", "OTOMATİK", "ONAY"]
-    uygun_sayisi = df[df['Yönetici Aksiyonu'].str.contains('|'.join(onay_kelimeleri), na=False)].shape[0]
-    c3.metric("Uygunluk Oranı", f"%{(uygun_sayisi/len(df)*100):.1f}")
-    c4.metric("Kritik (P1) Hata", int(df['P1_A'].sum()))
+    # Üst Metrik Kartları
+    m1, m2, m3, m4 = st.columns(4)
+    
+    toplam_kayit = len(df)
+    m1.metric("Toplam Parti", toplam_kayit)
+    
+    ortalama_tri = df['TRI'].mean()
+    m2.metric("Ortalama TRI", f"{ortalama_tri:.2f}")
+    
+    # Onaylanmış (Uygun) kayıtların oranı
+    onay_filtresi = ["Kabul", "UYGUN", "OTOMATİK", "ONAY"]
+    uygun_sayisi = df[df['Yönetici Aksiyonu'].str.contains('|'.join(onay_filtresi), na=False)].shape[0]
+    uygunluk_orani = (uygun_sayisi / toplam_kayit) * 100
+    m3.metric("Uygunluk Oranı", f"%{uygunluk_orani:.1f}")
+    
+    toplam_p1 = df['P1_A'].sum()
+    m4.metric("Toplam Kritik (P1)", int(toplam_p1))
 
-    col_left, col_right = st.columns(2)
-    with col_left:
-        st.write("📊 **Karar Dağılım Analizi**")
-        st.bar_chart(df['Yönetici Aksiyonu'].value_counts())
+    # Grafikler
+    col_sol, col_sag = st.columns(2)
     
-    with col_right:
-        st.write("📈 **Risk (TRI) Trendi (Son 30 Parti)**")
-        # Trend grafiği için TRI kolonunu alalım
-        trend_data = df['TRI'].tail(30).reset_index(drop=True)
-        st.line_chart(trend_data)
+    with col_sol:
+        st.write("📊 **Karar Dağılım Analizi**")
+        karar_serisi = df['Yönetici Aksiyonu'].value_counts()
+        st.bar_chart(karar_serisi)
+    
+    with col_sag:
+        st.write("📈 **Risk (TRI) Trendi (Son 20 Parti)**")
+        trend_serisi = df['TRI'].tail(20).reset_index(drop=True)
+        st.line_chart(trend_serisi)
 
 # --- 1. GÜVENLİK VE ROL VERİTABANI ---
 if 'user_db' not in st.session_state:
@@ -66,6 +76,7 @@ if 'user_db' not in st.session_state:
 # --- 2. VERİTABANI BAŞLATMA ---
 if 'ana_veritabani' not in st.session_state:
     st.session_state.ana_veritabani = veriyi_excelden_yukle()
+
 if 'onay_bekleyenler' not in st.session_state:
     st.session_state.onay_bekleyenler = [] 
 
@@ -74,20 +85,29 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     toplam_hata = J3 + K3 + L3 + M3
     hata_orani = (toplam_hata / G3) if G3 > 0 else 0
     temel_oran = ((P3_p * 2) + (Q3_p * 3) + (R3_p * 2) + (S3_p * 2)) / 15
+    
     t3_skor = max(temel_oran * (1 + (J3*0.03 + K3*0.05)), toplam_hata / 20) if toplam_hata > 0 else 0.0
+    
     red_mi = (hata_orani > 0.05 or (J3 >= 3 and P3_p >= 3) or (K3 >= 3 and Q3_p >= 3) or t3_skor >= 5.0)
     sartli_mi = False if red_mi else (t3_skor > 1.7 or (J3 + K3) >= 6)
     
-    if red_mi: return "RED", "🔴", t3_skor, "#FF4B4B" 
-    elif sartli_mi: return "SARI", "🟡", t3_skor, "#FFD700" 
-    else: return "UYGUN", "🟢", t3_skor, "#28A745" 
+    if red_mi:
+        return "RED", "🔴", t3_skor, "#FF4B4B" 
+    elif sartli_mi:
+        return "SARI", "🟡", t3_skor, "#FFD700" 
+    else:
+        return "UYGUN", "🟢", t3_skor, "#28A745" 
 
-# --- 4. OTURUM AYARLARI ---
-st.set_page_config(page_title="Alasar Quality Engine V16.9", layout="wide")
+# --- 4. OTURUM VE SAYFA AYARLARI ---
+st.set_page_config(page_title="Alasar Quality Engine V17.0", layout="wide")
 
-if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
-if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
+if 'genel_giris' not in st.session_state:
+    st.session_state.genel_giris = False
 
+if 'aktif_user' not in st.session_state:
+    st.session_state.aktif_user = None
+
+# Giriş Ekranı
 if not st.session_state.genel_giris:
     st.markdown("<h2 style='text-align:center;'>ALASAR SİSTEM GİRİŞİ</h2>", unsafe_allow_html=True)
     with st.form("genel_login"):
@@ -97,9 +117,11 @@ if not st.session_state.genel_giris:
             if u == "alasar" and p == "30052012":
                 st.session_state.genel_giris = True
                 st.rerun()
-            else: st.error("Hatalı giriş!")
+            else:
+                st.error("Hatalı giriş bilgileri!")
     st.stop()
 
+# Rol Seçim Ekranı
 if st.session_state.aktif_user is None:
     st.subheader("Lütfen Yetki Alanınızı Seçiniz")
     secim = st.selectbox("Panel:", ["Seçiniz...", "Üretim-Operatör", "Kalite Müdürü", "Genel Müdür"])
@@ -110,9 +132,11 @@ if st.session_state.aktif_user is None:
             if ps == st.session_state.user_db[u_key]["pass"]:
                 st.session_state.aktif_user = u_key
                 st.rerun()
-            else: st.error("Yetkisiz Şifre!")
+            else:
+                st.error("Yetkisiz Şifre!")
     st.stop()
 
+# Kenar Çubuğu (Sidebar)
 u_data = st.session_state.user_db[st.session_state.aktif_user]
 st.sidebar.title(f"📍 {u_data['role']}")
 st.sidebar.write(f"Kullanıcı: {u_data['full_name']}")
@@ -138,21 +162,39 @@ if u_data['role'] == "Üretim-Operatör":
         
         st.divider()
         st.subheader("Hata Adetleri ve Risk Puanları")
+        
         h1, h2, h3, h4 = st.columns(4)
-        j3 = h1.number_input("P1 (Kritik)", 0); p1p = h1.number_input("P1 Puan", 1.0, value=1.0)
-        k3 = h2.number_input("P2 (Majör)", 0); p2p = h2.number_input("P2 Puan", 1.0, value=1.0)
-        l3 = h3.number_input("P3 (Minör)", 0); p3p = h3.number_input("P3 Puan", 1.0, value=1.0)
-        m3 = h4.number_input("P4 (Görsel)", 0); p4p = h4.number_input("P4 Puan", 1.0, value=1.0)
+        j3 = h1.number_input("P1 (Kritik)", 0)
+        p1p = h1.number_input("P1 Puan", 1.0, value=1.0)
+        
+        k3 = h2.number_input("P2 (Majör)", 0)
+        p2p = h2.number_input("P2 Puan", 1.0, value=1.0)
+        
+        l3 = h3.number_input("P3 (Minör)", 0)
+        p3p = h3.number_input("P3 Puan", 1.0, value=1.0)
+        
+        m3 = h4.number_input("P4 (Görsel)", 0)
+        p4p = h4.number_input("P4 Puan", 1.0, value=1.0)
+        
         op_not = st.text_area("Operatör Gözlem Notları")
         submit = st.form_submit_button("SİSTEM ANALİZİNİ BAŞLAT")
 
     if submit:
         karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
         st.session_state.gecici_analiz = {
-            "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"), "Vardiya": vardiya, "Hattaki Operatör": op_ad_soyad,
-            "Sistem Operatörü": u_data['full_name'], "Parti No": lot, "Sevk": sevk, "Kontrol": kontrol, 
-            "TRI": round(skor, 4), "Sistem": karar, "Renk": renk, "Not": op_not,
-            "P1_A": j3, "P2_A": k3, "P3_A": l3, "P4_A": m3, "P1_P": p1p, "P2_P": p2p, "P3_P": p3p, "P4_P": p4p
+            "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "Vardiya": vardiya,
+            "Hattaki Operatör": op_ad_soyad,
+            "Sistem Operatörü": u_data['full_name'],
+            "Parti No": lot,
+            "Sevk": sevk,
+            "Kontrol": kontrol, 
+            "TRI": round(skor, 4),
+            "Sistem": karar,
+            "Renk": renk,
+            "Not": op_not,
+            "P1_A": j3, "P2_A": k3, "P3_A": l3, "P4_A": m3,
+            "P1_P": p1p, "P2_P": p2p, "P3_P": p3p, "P4_P": p4p
         }
 
     if 'gecici_analiz' in st.session_state:
@@ -177,9 +219,4 @@ if u_data['role'] == "Üretim-Operatör":
                 data.update({"Yönetici Aksiyonu": "BEKLİYOR" if data['Sistem'] != "UYGUN" else "OTOMATİK ONAY"})
                 if data['Sistem'] == "UYGUN":
                     veriyi_excele_kaydet(pd.DataFrame([data]))
-                    st.session_state.ana_veritabani = veriyi_excelden_yukle()
-                else:
-                    st.session_state.onay_bekleyenler.append(data.copy())
-                
-                del st.session_state.gecici_analiz
-                placeholder.success("✅ Kayıt başarıyla iletildi. Sistem sıfırlan
+                    st.session_state.ana_ver
