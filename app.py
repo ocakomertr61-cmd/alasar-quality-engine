@@ -54,7 +54,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- 4. OTURUM AYARLARI ---
-st.set_page_config(page_title="Alasar Quality Engine V16.6", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V16.7", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -137,7 +137,7 @@ if u_data['role'] == "Üretim-Operatör":
         foto_yok = (f1 is None and f2 is None and f3 is None)
         if foto_yok:
             st.warning("⚠️ Kanıt dosyası (fotoğraf) yüklemediniz.")
-            kanit_onay = st.checkbox("Kanıtlarınızı sunmadınız, bu şekilde iletmek istiyor musunuz?")
+            kanit_onay = st.checkbox("Kanıtlarınız sunulmadan iletmek istiyor musunuz?")
         else:
             kanit_onay = True
 
@@ -161,9 +161,13 @@ elif u_data['role'] == "Kalite Müdürü":
     st.header("⚖️ Karar Bekleyen Kayıtlar")
     bekleyenler = st.session_state.onay_bekleyenler
     
-    for i, bekleyen in enumerate(bekleyenler):
-        if bekleyen.get("Üst Yöneticiye Sevk", False): continue # Genel Müdür'e gidenleri burada gösterme
-        
+    # Sevk edilmemişleri filtrele
+    aktif_bekleyenler = [b for b in bekleyenler if not b.get("Üst Yöneticiye Sevk", False)]
+    
+    if not aktif_bekleyenler:
+        st.info("Onay bekleyen kayıt bulunmuyor.")
+
+    for i, bekleyen in enumerate(aktif_bekleyenler):
         with st.expander(f"📌 {bekleyen['Parti No']} | TRI: {bekleyen['TRI']} | Vardiya: {bekleyen['Vardiya']}"):
             st.write(f"**Operatör:** {bekleyen['Hattaki Operatör']} | **Sistem Kararı:** {bekleyen['Sistem']}")
             st.table(pd.DataFrame({"Hata": ["P1","P2","P3","P4"], "Adet": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']]}))
@@ -181,44 +185,69 @@ elif u_data['role'] == "Kalite Müdürü":
             
             if st.button("KARARI UYGULA", key=f"btn_{i}"):
                 if aks == "Üst Yöneticiye Sevk (Patron Onayı)":
-                    bekleyen["Üst Yöneticiye Sevk"] = True
-                    bekleyen["Yönetici Notu"] = y_not
+                    # Kaydı güncelle ve listede "sevk edildi" olarak işaretle
+                    for idx, b in enumerate(st.session_state.onay_bekleyenler):
+                        if b['Parti No'] == bekleyen['Parti No'] and b['Tarih'] == bekleyen['Tarih']:
+                            st.session_state.onay_bekleyenler[idx]["Üst Yöneticiye Sevk"] = True
+                            st.session_state.onay_bekleyenler[idx]["Kalite Müdürü Notu"] = y_not
+                            st.session_state.onay_bekleyenler[idx]["Yönetici Aksiyonu"] = "ÜST YÖNETİCİYE SEVK EDİLDİ"
                     st.info("Kayıt Genel Müdür onayına sevk edildi.")
                 else:
                     bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
                     veriyi_excele_kaydet(pd.DataFrame([bekleyen]))
-                    st.session_state.onay_bekleyenler.pop(i)
+                    # Listeden sil
+                    st.session_state.onay_bekleyenler = [b for b in st.session_state.onay_bekleyenler if not (b['Parti No'] == bekleyen['Parti No'] and b['Tarih'] == bekleyen['Tarih'])]
                     st.session_state.ana_veritabani = veriyi_excelden_yukle()
                 time.sleep(1); st.rerun()
 
     st.divider()
-    st.subheader("📜 Arşiv (Son Kayıtlar)")
+    st.subheader("📜 Arşiv (Excel Veritabanı)")
     st.dataframe(st.session_state.ana_veritabani.iloc[::-1])
 
 # --- PANEL 3: GENEL MÜDÜR ---
 elif u_data['role'] == "Genel Müdür":
-    st.header("👔 Üst Yönetim Onay Paneli")
+    st.header("👔 Üst Yönetim (Patron) Onay Paneli")
     sevk_edilenler = [b for b in st.session_state.onay_bekleyenler if b.get("Üst Yöneticiye Sevk", False)]
     
     if not sevk_edilenler:
-        st.info("Onay bekleyen kritik bir sevk bulunmuyor.")
+        st.info("Şu an onayınızı bekleyen kritik bir sevk bulunmuyor.")
     
     for i, sevk in enumerate(sevk_edilenler):
-        with st.warning(f"KRİTİK ONAY: {sevk['Parti No']} (Kalite Müdürü Notu: {sevk.get('Yönetici Notu', '-')})"):
-            st.write(f"Bu parti için son kararınızı veriniz.")
-            col1, col2 = st.columns(2)
-            if col1.button("✅ ONAYLA (KABUL)", key=f"p_ok_{i}"):
-                sevk.update({"Yönetici Aksiyonu": "ÜST YÖNETİM ONAYI - KABUL"})
-                veriyi_excele_kaydet(pd.DataFrame([sevk]))
-                st.session_state.onay_bekleyenler.remove(sevk)
-                st.success("Parti onaylandı."); time.sleep(1); st.rerun()
+        with st.container():
+            st.markdown(f"""
+            <div style="border:2px solid #FF4B4B; padding:20px; border-radius:10px; background-color:#FFF5F5;">
+                <h3 style="color:#FF4B4B;">⚠️ DİKKAT: KRİTİK ONAY BEKLEYEN PARTİ</h3>
+                <b>Parti No:</b> {sevk['Parti No']} | <b>Vardiya:</b> {sevk['Vardiya']}<br>
+                <b>Kalite Müdürü Notu:</b> {sevk.get('Kalite Müdürü Notu', 'Not belirtilmemiş')}<br>
+                <b>TRI Skoru:</b> {sevk['TRI']} | <b>Sistem Kararı:</b> {sevk['Sistem']}
+            </div>
+            """, unsafe_allow_html=True)
             
-            if col2.button("❌ REDDET (KESİN İADE)", key=f"p_no_{i}"):
-                sevk.update({"Yönetici Aksiyonu": "ÜST YÖNETİM RED - İADE"})
-                veriyi_excele_kaydet(pd.DataFrame([sevk]))
-                st.session_state.onay_bekleyenler.remove(sevk)
-                st.error("Parti reddedildi."); time.sleep(1); st.rerun()
+            st.table(pd.DataFrame({"Hata Sınıfı": ["P1","P2","P3","P4"], "Adet": [sevk['P1_A'], sevk['P2_A'], sevk['P3_A'], sevk['P4_A']]}))
+            
+            p_aks = st.radio("Kararınız nedir?", ["Onayla (Kabul)", "Şartlı Onay", "Reddet (İade)"], key=f"p_aks_{i}", horizontal=True)
+            p_not = st.text_area("Patron Karar Notu (Zorunlu)", key=f"p_not_{i}", placeholder="Karar gerekçenizi buraya yazınız...")
+            
+            c_p1, c_p2 = st.columns(2)
+            if c_p1.button("✅ KARARI KAYDET VE ARŞİVLE", key=f"p_save_{i}"):
+                if not p_not:
+                    st.warning("Lütfen kararın altına bir not ekleyiniz!")
+                else:
+                    final_status = f"PATRON ONAYI: {p_aks}"
+                    sevk.update({
+                        "Yönetici Aksiyonu": final_status, 
+                        "Patron Notu": p_not,
+                        "Onay Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
+                    })
+                    # Fotoğraf bilgilerini excel'e taşımadan önce temizle (isteğe bağlı)
+                    veriyi_excele_kaydet(pd.DataFrame([sevk]))
+                    
+                    # Bekleyenler listesinden tamamen temizle
+                    st.session_state.onay_bekleyenler = [b for b in st.session_state.onay_bekleyenler if not (b['Parti No'] == sevk['Parti No'] and b['Tarih'] == sevk['Tarih'])]
+                    
+                    st.session_state.ana_veritabani = veriyi_excelden_yukle()
+                    st.success("Karar başarıyla kaydedildi."); time.sleep(2); st.rerun()
+            st.divider()
     
-    st.divider()
-    st.subheader("📊 Fabrika Performans Arşivi")
-    st.dataframe(st.session_state.ana_veritabani)
+    st.subheader("📊 Fabrika Genel Performans Arşivi")
+    st.dataframe(st.session_state.ana_veritabani.iloc[::-1])
