@@ -11,17 +11,19 @@ DB_FILE = "alasar_kalite_veritabani.xlsx"
 
 def veriyi_excele_kaydet(yeni_df):
     """Veriyi kalıcı olarak Excel dosyasına ekler veya oluşturur."""
-    if not os.path.exists(DB_FILE):
-        yeni_df.to_excel(DB_FILE, index=False)
-    else:
-        mevcut_df = pd.read_excel(DB_FILE)
-        guncel_df = pd.concat([mevcut_df, yeni_df], ignore_index=True)
-        guncel_df.to_excel(DB_FILE, index=False)
+    try:
+        if not os.path.exists(DB_FILE):
+            yeni_df.to_excel(DB_FILE, index=False, engine='openpyxl')
+        else:
+            mevcut_df = pd.read_excel(DB_FILE, engine='openpyxl')
+            guncel_df = pd.concat([mevcut_df, yeni_df], ignore_index=True)
+            guncel_df.to_excel(DB_FILE, index=False, engine='openpyxl')
+    except Exception as e:
+        st.error(f"Excel kayıt hatası: {e}")
 
 def veriyi_excelden_yukle():
-    """Uygulama başında Excel'deki verileri session_state'e çeker."""
     if os.path.exists(DB_FILE):
-        return pd.read_excel(DB_FILE)
+        return pd.read_excel(DB_FILE, engine='openpyxl')
     return pd.DataFrame()
 
 # --- 1. GÜVENLİK VE ROL VERİTABANI ---
@@ -31,9 +33,6 @@ if 'user_db' not in st.session_state:
         "genelmudur": {"pass": "patron456", "role": "Genel Müdür", "full_name": "Genel Müdürlük"},
         "operator": {"pass": "op789", "role": "Üretim-Operatör", "full_name": "Kalite Operatörü"}
     }
-
-GENERAL_USER = "alasar"
-GENERAL_PASS = "30052012"
 
 # --- 2. VERİTABANI BAŞLATMA ---
 if 'ana_veritabani' not in st.session_state:
@@ -55,7 +54,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- 4. OTURUM AYARLARI ---
-st.set_page_config(page_title="Alasar Quality Engine V16.5", layout="wide")
+st.set_page_config(page_title="Alasar Quality Engine V16.6", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -66,7 +65,7 @@ if not st.session_state.genel_giris:
         u = st.text_input("Kullanıcı Adı").strip()
         p = st.text_input("Şifre", type="password").strip()
         if st.form_submit_button("Sisteme Gir"):
-            if u == GENERAL_USER and p == GENERAL_PASS:
+            if u == "alasar" and p == "30052012":
                 st.session_state.genel_giris = True
                 st.rerun()
             else: st.error("Hatalı giriş!")
@@ -85,27 +84,9 @@ if st.session_state.aktif_user is None:
             else: st.error("Yetkisiz Şifre!")
     st.stop()
 
-# --- ANALİTİK PANEL FONKSİYONU ---
-def analitik_panel_goster(df, baslik):
-    st.subheader(baslik)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Toplam Parti", len(df))
-    m2.metric("Ortalama TRI", round(df['TRI'].mean(), 2) if not df.empty else 0)
-    uyg_orani = (len(df[df['Yönetici Aksiyonu'].str.contains("Kabul|OTOMATİK", na=False)]) / len(df) * 100) if not df.empty else 0
-    m3.metric("Uygunluk Oranı", f"%{round(uyg_orani, 1)}")
-    m4.metric("Toplam P1 Hatası", int(df['P1_A'].sum()) if not df.empty else 0)
-    
-    g1, g2 = st.columns(2)
-    with g1:
-        st.subheader("Karar Dağılımı")
-        st.bar_chart(df['Yönetici Aksiyonu'].value_counts())
-    with g2:
-        st.subheader("Risk Dağılımı")
-        st.pie_chart(df['Sistem'].value_counts()) if hasattr(st, "pie_chart") else st.write(df['Sistem'].value_counts())
-
 u_data = st.session_state.user_db[st.session_state.aktif_user]
 st.sidebar.title(f"📍 {u_data['role']}")
-st.sidebar.write(f"Hoş Geldiniz: {u_data['full_name']}")
+st.sidebar.write(f"Kullanıcı: {u_data['full_name']}")
 
 if st.sidebar.button("Oturumu Kapat / Geri Dön"):
     st.session_state.aktif_user = None
@@ -114,120 +95,130 @@ if st.sidebar.button("Oturumu Kapat / Geri Dön"):
 # --- PANEL 1: ÜRETİM-OPERATÖR ---
 if u_data['role'] == "Üretim-Operatör":
     st.header("🏭 Üretim Hattı Giriş Terminali")
-    
-    placeholder = st.empty() # Başarı mesajı için dinamik yer tutucu
+    placeholder = st.empty()
 
     with st.form("veri_giris_formu"):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, v_col = st.columns(3)
         lot = c1.text_input("Parti No", "LOT-")
         sevk = c2.number_input("Toplam Sevk Adeti", 1, value=1000)
+        vardiya = v_col.selectbox("Vardiya No", list(range(60, 81)))
+        
+        c3, c4 = st.columns(2)
         kontrol = c3.number_input("Kontrol Edilen Adet", 1, value=100)
+        op_ad_soyad = c4.text_input("Operatör Ad Soyad (Hatta Görevli)")
+        
         st.divider()
         st.subheader("Hata Adetleri ve Risk Puanları")
         h1, h2, h3, h4 = st.columns(4)
-        j3 = h1.number_input("P1 (Kritik) Adet", 0); p1p = h1.number_input("P1 Puan", 1.0, value=1.0)
-        k3 = h2.number_input("P2 (Majör) Adet", 0); p2p = h2.number_input("P2 Puan", 1.0, value=1.0)
-        l3 = h3.number_input("P3 (Minör) Adet", 0); p3p = h3.number_input("P3 Puan", 1.0, value=1.0)
-        m3 = h4.number_input("P4 (Görsel) Adet", 0); p4p = h4.number_input("P4 Puan", 1.0, value=1.0)
+        j3 = h1.number_input("P1 (Kritik)", 0); p1p = h1.number_input("P1 Puan", 1.0, value=1.0)
+        k3 = h2.number_input("P2 (Majör)", 0); p2p = h2.number_input("P2 Puan", 1.0, value=1.0)
+        l3 = h3.number_input("P3 (Minör)", 0); p3p = h3.number_input("P3 Puan", 1.0, value=1.0)
+        m3 = h4.number_input("P4 (Görsel)", 0); p4p = h4.number_input("P4 Puan", 1.0, value=1.0)
         op_not = st.text_area("Operatör Gözlem Notları")
         submit = st.form_submit_button("SİSTEM ANALİZİNİ BAŞLAT")
 
     if submit:
         karar, ikon, skor, renk = kalite_motoru_hesapla(kontrol, j3, k3, l3, m3, p1p, p2p, p3p, p4p)
         st.session_state.gecici_analiz = {
-            "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"), "Operatör": u_data['full_name'], "Parti No": lot,
-            "Sevk": sevk, "Kontrol": kontrol, "TRI": round(skor, 4), "Sistem": karar, "Renk": renk, "Not": op_not,
+            "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"), "Vardiya": vardiya, "Hattaki Operatör": op_ad_soyad,
+            "Sistem Operatörü": u_data['full_name'], "Parti No": lot, "Sevk": sevk, "Kontrol": kontrol, 
+            "TRI": round(skor, 4), "Sistem": karar, "Renk": renk, "Not": op_not,
             "P1_A": j3, "P2_A": k3, "P3_A": l3, "P4_A": m3, "P1_P": p1p, "P2_P": p2p, "P3_P": p3p, "P4_P": p4p
         }
 
     if 'gecici_analiz' in st.session_state:
         data = st.session_state.gecici_analiz
-        st.markdown(f"<div style='background-color:{data['Renk']}; padding:25px; border-radius:15px; text-align:center; margin-top:15px; border: 2px solid white;'><h1 style='color:white; font-size: 40px;'>ÖN ANALİZ: {data['Sistem']} (TRI: {data['TRI']})</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background-color:{data['Renk']}; padding:20px; border-radius:10px; text-align:center;'><h2 style='color:white;'>ÖN ANALİZ: {data['Sistem']} (TRI: {data['TRI']})</h2></div>", unsafe_allow_html=True)
         
-        st.subheader("🛡️ Gönderim Onayı ve Kanıtlar")
-        col_onay1, col_onay2 = st.columns([2, 1])
+        f1 = st.file_uploader("Genel Görünüm", type=['jpg', 'png'])
+        f2 = st.file_uploader("Hata Detayı", type=['jpg', 'png'])
+        f3 = st.file_uploader("Etiket", type=['jpg', 'png'])
         
-        with col_onay1:
-            if data['Sistem'] != "UYGUN":
-                st.warning("⚠️ Kritik risk tespit edildi. Lütfen 3 adet fotoğraf yükleyiniz.")
-                f1 = st.file_uploader("Genel Görünüm", type=['jpg', 'png'], key="f1")
-                f2 = st.file_uploader("Hata Detayı", type=['jpg', 'png'], key="f2")
-                f3 = st.file_uploader("Etiket", type=['jpg', 'png'], key="f3")
+        foto_yok = (f1 is None and f2 is None and f3 is None)
+        if foto_yok:
+            st.warning("⚠️ Kanıt dosyası (fotoğraf) yüklemediniz.")
+            kanit_onay = st.checkbox("Kanıtlarınızı sunmadınız, bu şekilde iletmek istiyor musunuz?")
+        else:
+            kanit_onay = True
+
+        if st.button("🚀 KAYDI GÖNDER"):
+            if not kanit_onay:
+                st.error("Lütfen fotoğraf yükleyin veya kanıtsız gönderim onayını işaretleyin!")
             else:
-                st.info("Parti uygun görünüyor. Fotoğraf yüklemek opsiyoneldir.")
-                f1 = f2 = f3 = None
-            onay_box = st.checkbox("Girdiğim verilerin doğruluğunu onaylıyorum. (UYGUNDUR)", key="final_check")
-        
-        with col_onay2:
-            st.write("### İşlem Seçiniz")
-            btn_gonder = st.button("🚀 KAYDI YÖNETİCİYE GÖNDER", use_container_width=True)
-            if btn_gonder:
-                if not onay_box:
-                    st.error("Lütfen 'Uygundur Onaylıyorum' kutucuğunu işaretleyin!")
-                elif data['Sistem'] != "UYGUN" and (not f1 or not f2 or not f3):
-                    st.error("RED veya SARI kararlarda 3 fotoğraf yüklemek zorunludur!")
+                data.update({"Yönetici Aksiyonu": "BEKLİYOR" if data['Sistem'] != "UYGUN" else "OTOMATİK ONAY"})
+                if data['Sistem'] == "UYGUN":
+                    veriyi_excele_kaydet(pd.DataFrame([data]))
+                    st.session_state.ana_veritabani = veriyi_excelden_yukle()
                 else:
-                    # Kayıt İşlemi
-                    if f1: data.update({"Foto_1": "VAR", "Foto_2": "VAR", "Foto_3": "VAR"}) # Excel'e fotoğraf binary gömülmez (Hız için)
-                    data.update({"Yönetici Aksiyonu": "BEKLİYOR" if data['Sistem'] != "UYGUN" else "OTOMATİK ONAY"})
-                    
-                    if data['Sistem'] == "UYGUN":
-                        veriyi_excele_kaydet(pd.DataFrame([data]))
-                        st.session_state.ana_veritabani = veriyi_excelden_yukle()
-                    else:
-                        st.session_state.onay_bekleyenler.append(data.copy())
-                    
-                    # EKRANA DEV BAŞARI MESAJINI BAS
-                    del st.session_state.gecici_analiz
-                    placeholder.markdown("""
-                        <div style="background-color:#28A745; border: 5px solid #1e7e34; padding:60px; border-radius:25px; text-align:center; margin-bottom:30px; box-shadow: 0px 10px 20px rgba(0,0,0,0.2); position:relative; z-index:999;">
-                            <h1 style="color:white; font-size: 55px; font-weight: bold;">✅ KAYDINIZ BAŞARIYLA GÖNDERİLMİŞTİR.</h1>
-                            <h2 style="color:#f8f9fa; font-size: 30px;">Veritabanına işlendi. Sistem 6 saniye içinde sıfırlanacaktır...</h2>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    time.sleep(6)
-                    st.rerun()
+                    st.session_state.onay_bekleyenler.append(data.copy())
+                
+                del st.session_state.gecici_analiz
+                placeholder.success("✅ Kayıt başarıyla iletildi. Sistem sıfırlanıyor...")
+                time.sleep(3); st.rerun()
 
 # --- PANEL 2: KALİTE MÜDÜRÜ ---
 elif u_data['role'] == "Kalite Müdürü":
-    if not st.session_state.ana_veritabani.empty:
-        analitik_panel_goster(st.session_state.ana_veritabani, "📊 Güncel Kalite Performansı (Özet)")
-        st.divider()
-
-    st.header("⚖️ Onay Bekleyen Kritik Kayıtlar")
-    if not st.session_state.onay_bekleyenler: st.info("Şu an bekleyen bir kayıt yok.")
+    st.header("⚖️ Karar Bekleyen Kayıtlar")
+    bekleyenler = st.session_state.onay_bekleyenler
     
-    for i, bekleyen in enumerate(st.session_state.onay_bekleyenler):
-        with st.expander(f"📌 {bekleyen['Parti No']} | TRI: {bekleyen['TRI']} | Operatör: {bekleyen['Operatör']}"):
-            detay_data = {
-                "Hata Sınıfı": ["P1 (Kritik)", "P2 (Majör)", "P3 (Minör)", "P4 (Görsel)"],
-                "Hata Adedi": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']],
-                "Risk Puanı (Ağırlık)": [bekleyen['P1_P'], bekleyen['P2_P'], bekleyen['P3_P'], bekleyen['P4_P']]
-            }
-            st.table(pd.DataFrame(detay_data))
-            st.divider()
-            c_a1, c_a2 = st.columns(2)
-            aks = c_a1.selectbox("Nihai Aksiyon", ["Olduğu Gibi Kabul (Sapma) ✅", "%100 Ayıklama 🔍", "İade 🚛", "Karantina 🔒"], key=f"aks_m_{i}")
-            y_not = c_a2.text_input("Yönetici Notu", key=f"not_m_{i}")
-            if st.button("KARARI ONAYLA VE EXCEL'E YAZ", key=f"save_m_{i}"):
-                bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
-                save_data = {k: v for k, v in bekleyen.items() if not k.startswith("Foto_")}
-                veriyi_excele_kaydet(pd.DataFrame([save_data]))
-                st.session_state.ana_veritabani = veriyi_excelden_yukle()
-                st.session_state.onay_bekleyenler.pop(i)
-                st.success("Kalıcı olarak Excel'e kaydedildi."); time.sleep(1); st.rerun()
+    for i, bekleyen in enumerate(bekleyenler):
+        if bekleyen.get("Üst Yöneticiye Sevk", False): continue # Genel Müdür'e gidenleri burada gösterme
+        
+        with st.expander(f"📌 {bekleyen['Parti No']} | TRI: {bekleyen['TRI']} | Vardiya: {bekleyen['Vardiya']}"):
+            st.write(f"**Operatör:** {bekleyen['Hattaki Operatör']} | **Sistem Kararı:** {bekleyen['Sistem']}")
+            st.table(pd.DataFrame({"Hata": ["P1","P2","P3","P4"], "Adet": [bekleyen['P1_A'], bekleyen['P2_A'], bekleyen['P3_A'], bekleyen['P4_A']]}))
+            
+            aks = st.selectbox("Nihai Karar", [
+                "Olduğu Gibi Kabul", 
+                "%100 Ayıklama Sonrası Şartlı Kabul", 
+                "Karantinaya Alınız ve Bekletiniz", 
+                "Üst Yöneticiye Sevk (Patron Onayı)", 
+                "Müşteriye İade Edelim", 
+                "Tedarikçiye İade Edelim"
+            ], key=f"aks_{i}")
+            
+            y_not = st.text_input("Yönetici Notu", key=f"not_{i}")
+            
+            if st.button("KARARI UYGULA", key=f"btn_{i}"):
+                if aks == "Üst Yöneticiye Sevk (Patron Onayı)":
+                    bekleyen["Üst Yöneticiye Sevk"] = True
+                    bekleyen["Yönetici Notu"] = y_not
+                    st.info("Kayıt Genel Müdür onayına sevk edildi.")
+                else:
+                    bekleyen.update({"Yönetici Aksiyonu": aks, "Yönetici Notu": y_not})
+                    veriyi_excele_kaydet(pd.DataFrame([bekleyen]))
+                    st.session_state.onay_bekleyenler.pop(i)
+                    st.session_state.ana_veritabani = veriyi_excelden_yukle()
+                time.sleep(1); st.rerun()
 
     st.divider()
-    st.subheader("📜 Excel Veritabanı Arşiv Listesi")
-    st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True)
+    st.subheader("📜 Arşiv (Son Kayıtlar)")
+    st.dataframe(st.session_state.ana_veritabani.iloc[::-1])
 
 # --- PANEL 3: GENEL MÜDÜR ---
 elif u_data['role'] == "Genel Müdür":
-    st.header("📈 Kalite Stratejik Analitik Paneli")
-    if not st.session_state.ana_veritabani.empty:
-        analitik_panel_goster(st.session_state.ana_veritabani, "Fabrika Genel Durum")
-        st.divider()
-        st.subheader("📊 Performans Arşivi (Excel'den Gelen)")
-        st.dataframe(st.session_state.ana_veritabani.iloc[::-1], use_container_width=True)
-    else:
-        st.info("Henüz analiz edilmiş veri bulunmuyor.")
+    st.header("👔 Üst Yönetim Onay Paneli")
+    sevk_edilenler = [b for b in st.session_state.onay_bekleyenler if b.get("Üst Yöneticiye Sevk", False)]
+    
+    if not sevk_edilenler:
+        st.info("Onay bekleyen kritik bir sevk bulunmuyor.")
+    
+    for i, sevk in enumerate(sevk_edilenler):
+        with st.warning(f"KRİTİK ONAY: {sevk['Parti No']} (Kalite Müdürü Notu: {sevk.get('Yönetici Notu', '-')})"):
+            st.write(f"Bu parti için son kararınızı veriniz.")
+            col1, col2 = st.columns(2)
+            if col1.button("✅ ONAYLA (KABUL)", key=f"p_ok_{i}"):
+                sevk.update({"Yönetici Aksiyonu": "ÜST YÖNETİM ONAYI - KABUL"})
+                veriyi_excele_kaydet(pd.DataFrame([sevk]))
+                st.session_state.onay_bekleyenler.remove(sevk)
+                st.success("Parti onaylandı."); time.sleep(1); st.rerun()
+            
+            if col2.button("❌ REDDET (KESİN İADE)", key=f"p_no_{i}"):
+                sevk.update({"Yönetici Aksiyonu": "ÜST YÖNETİM RED - İADE"})
+                veriyi_excele_kaydet(pd.DataFrame([sevk]))
+                st.session_state.onay_bekleyenler.remove(sevk)
+                st.error("Parti reddedildi."); time.sleep(1); st.rerun()
+    
+    st.divider()
+    st.subheader("📊 Fabrika Performans Arşivi")
+    st.dataframe(st.session_state.ana_veritabani)
