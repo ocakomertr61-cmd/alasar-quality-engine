@@ -313,3 +313,38 @@ if not st.session_state.ana_veritabani.empty:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
+# --- PARETO ANALİZİ MODÜLÜ (EN SONA EKLEYEBİLİRSİNİZ) ---
+st.divider()
+if not st.session_state.ana_veritabani.empty:
+    st.subheader("🎯 Otomatik Pareto Analizi (Hata Dağılımı)")
+    
+    # Hata adetlerini topla
+    df = st.session_state.ana_veritabani
+    hata_toplamlari = {
+        "P1 (Kritik)": df['P1_A'].sum(),
+        "P2 (Majör)": df['P2_A'].sum(),
+        "P3 (Minör)": df['P3_A'].sum(),
+        "P4 (Görsel)": df['P4_A'].sum()
+    }
+    
+    # Veriyi düzenle ve sırala
+    pareto_df = pd.DataFrame(list(hata_toplamlari.items()), columns=['Hata Tipi', 'Adet'])
+    pareto_df = pareto_df.sort_values(by='Adet', ascending=False)
+    
+    # Kümülatif yüzde hesapla
+    pareto_df['Kümülatif %'] = (pareto_df['Adet'].cumsum() / pareto_df['Adet'].sum()) * 100
+    
+    # Görselleştirme
+    c1, c2 = st.columns([2, 1])
+    
+    with c1:
+        st.write("📊 **Hata Frekans Grafiği**")
+        st.bar_chart(pareto_df.set_index('Hata Tipi')['Adet'])
+        
+    with c2:
+        st.write("📈 **Pareto Tablosu**")
+        st.dataframe(pareto_df.style.format({'Kümülatif %': '{:.1f}%'}))
+
+    # Kritik Uyarı
+    en_cok_hata = pareto_df.iloc[0]['Hata Tipi']
+    st.info(f"💡 **Analiz Notu:** Toplam hataların içinde en yüksek paya sahip olan tip: **{en_cok_hata}**. Odaklanılması gereken öncelikli alan burasıdır.")
