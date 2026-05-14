@@ -298,3 +298,18 @@ elif u_data['role'] == "Genel Müdür":
 
     st.subheader("📊 Fabrika Genel Performans Arşivi")
     st.dataframe(st.session_state.ana_veritabani.iloc[::-1])
+# --- EN SONA EKLEYEBİLECEĞİNİZ İNDİRME BLOĞU ---
+st.divider() # Bir çizgi çeker
+if not st.session_state.ana_veritabani.empty:
+    output = io.BytesIO()
+    # Veriyi doğrudan Excel (xlsx) formatına çevirir
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        st.session_state.ana_veritabani.to_excel(writer, index=False, sheet_name='Kalite_Raporu')
+    
+    st.download_button(
+        label="📥 Tüm Veritabanını Excel Olarak İndir (Düzgün Format)",
+        data=output.getvalue(),
+        file_name=f"Alasar_Kalite_Raporu_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
