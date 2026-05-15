@@ -129,17 +129,32 @@ else:
             m5.metric("Net Hakediş", f"{toplam_brut - toplam_kesinti:,.0f} TL")
             st.markdown("---")
 
-        # İŞTE O GERİ GELEN 4 TABLI YAPI
         tab1, tab2, tab3, tab4 = st.tabs(["📊 ANA TABLO & DÜZENLEME", "✅ ONAY BEKLEYENLER", "➕ FULL MANUEL KAYIT", "📉 LEGRAND KESİNTİ GİRİŞİ"])
         
         with tab1:
-            # Ana tabloda kesinti sütununu GÖSTERMİYORUZ (talebiniz üzerine tertemiz)
+            st.subheader("Veritabanı Yönetimi")
+            # Ana tabloda kesinti sütununu GÖSTERMİYORUZ
             df_viz = df_genel.drop(columns=["Legrand_Kesinti_Tutari"]) if "Legrand_Kesinti_Tutari" in df_genel.columns else df_genel
+            
+            # SİLME İŞLEMİ İÇİN SEÇİM KOLONU EKLEME
+            df_viz.insert(0, "Seç", False)
             edited_df = st.data_editor(df_viz, use_container_width=True, hide_index=True, num_rows="dynamic")
-            if st.button("💾 Değişiklikleri Kaydet"):
-                # Kaydederken kesinti verilerini bozmadan birleştir
-                final_df = pd.concat([edited_df, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
-                veriyi_yaz(final_df); st.success("Kaydedildi!"); st.rerun()
+            
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
+                    # Seçim kolonunu atıp geri kalanları kesintiyle birleştir
+                    clean_edited = edited_df.drop(columns=["Seç"])
+                    final_df = pd.concat([clean_edited, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
+                    veriyi_yaz(final_df); st.success("Kaydedildi!"); st.rerun()
+            
+            with col_btn2:
+                # SİLME YETKİSİ (ÖMER BEY ÖZEL)
+                if st.button("🗑️ SEÇİLİ KAYITLARI SİL", type="primary", use_container_width=True):
+                    indices_to_keep = edited_df[edited_df["Seç"] == False].index
+                    final_df = df_genel.iloc[indices_to_keep]
+                    veriyi_yaz(final_df)
+                    st.warning("Seçilen kayıtlar silindi!"); time.sleep(1); st.rerun()
 
         with tab2:
             st.subheader("Onay Bekleyen Kayıtlar")
