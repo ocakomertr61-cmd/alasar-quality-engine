@@ -7,8 +7,9 @@ from datetime import datetime
 st.set_page_config(page_title="Kurumsal Kayıp Zaman Motoru", layout="wide")
 
 DOSYA_ADI = "kurumsal_takip_veritabani.xlsx"
+# Ana tablo yapısını koruyoruz (İrsaliye No eklendi)
 KOLONLAR = [
-    "Kayit_ID", "Şirket", "Referans_No", "Dönem_Yıl", "Dönem_Ay", "pH", "Miktar", 
+    "Kayit_ID", "Şirket", "İrsaliye_No", "Referans_No", "Dönem_Yıl", "Dönem_Ay", "pH", "Miktar", 
     "Kayıp_Zaman_Nedeni", "Yapılacak_İşin_Tanımı", "Onay_Veren", "Talep_Edilen_Saat",
     "Müşteri_Onay_Tarihi", "Talep_Tarihi", "Son_Durum", "Güncelleme_Tarihi",
     "Yonetici_Onay_Durumu", "Hakedis_Tutari", "Legrand_Kesinti_Tutari", "Kalite_Notu"
@@ -48,35 +49,55 @@ def logout():
     st.rerun()
 
 # --- 4. ARAYÜZ (SEKMELER) ---
-tab_rework, tab_kalite, tab_patron = st.tabs(["🛠️ REWORK BİRİMİ", "🔍 KALİTE ONAYI & MUTABAKAT", "👑 PATRON PANELİ"])
+tab_ana_tablo, tab_rework, tab_kalite, tab_patron = st.tabs(["📊 ANA TABLO", "🛠️ REWORK GİRİŞİ", "🔍 KALİTE & MUTABAKAT", "👑 PATRON PANELİ"])
+
+# --- TAB 0: ANA TABLO (Senin Takip Ettiğin Liste) ---
+with tab_ana_tablo:
+    st.subheader("📊 Müşteri Kayıp Zaman Takip Ana Tablosu")
+    df_ana = veriyi_oku()
+    st.dataframe(df_ana, use_container_width=True, hide_index=True)
 
 # --- TAB 1: REWORK ---
 with tab_rework:
-    st.subheader("🛠️ Yeni Tamir/Rework Girişi")
+    st.subheader("🛠️ Rework Birimi Veri İşleme")
     with st.form("rework_form"):
         c1, c2 = st.columns(2)
         with c1:
-            sirket = st.selectbox("Şirket", ["Hakan Kalıp Plastik", "Alaşar"])
-            ref = st.text_input("Referans / Parti No")
-            yil = st.selectbox("Yıl", ["2024", "2025", "2026"], index=2)
-            ay = st.selectbox("Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
+            irsaliye = st.text_input("İrsaliye No")
+            ref = st.text_input("Referans No")
+            tamir_aciklama = st.text_area("Tamir Açıklaması")
         with c2:
             ph = st.number_input("pH (Hız)", min_value=0.1, value=7.0)
-            miktar = st.number_input("Miktar", min_value=1, value=100)
-            kesinti = st.number_input("Legrand Kesinti (TL)", value=0.0)
-            neden = st.text_area("Hata Nedeni")
-        
-        if st.form_submit_button("🚀 Kalite Onayına Gönder"):
+            miktar = st.number_input("Miktar", min_value=1, value=1)
+            yil = st.selectbox("Yıl", ["2024", "2025", "2026"], index=2)
+            ay = st.selectbox("Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
+
+        if st.form_submit_button("💾 Ana Tabloya İşle / Eşleştir"):
             df = veriyi_oku()
             saat = round(miktar / ph, 2)
-            yeni_satir = {
-                "Kayit_ID": f"RWK-{len(df)+1:04d}", "Şirket": sirket, "Referans_No": ref, "Dönem_Yıl": yil, "Dönem_Ay": ay,
-                "pH": ph, "Miktar": miktar, "Kayıp_Zaman_Nedeni": neden, "Yapılacak_İşin_Tanımı": "Rework İşlemi",
-                "Talep_Edilen_Saat": saat, "Hakedis_Tutari": saat * SAATLIK_BIRIM_FIYAT, "Legrand_Kesinti_Tutari": kesinti,
-                "Son_Durum": "Beklemede (İç Kayıt)", "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-            if veriyi_yaz(pd.concat([df, pd.DataFrame([yeni_satir])], ignore_index=True)):
-                st.success("Kayıt Ömer Bey'in inceleme listesine eklendi."); st.rerun()
+            
+            # Eşleştirme Mantığı: İrsaliye veya Referans No var mı?
+            mask = (df["İrsaliye_No"].astype(str) == str(irsaliye)) | (df["Referans_No"].astype(str) == str(ref))
+            
+            if mask.any():
+                # Mevcut kaydı güncelle
+                df.loc[mask, ["pH", "Miktar", "Talep_Edilen_Saat", "Hakedis_Tutari", "Kayıp_Zaman_Nedeni", "Son_Durum", "Güncelleme_Tarihi"]] = [
+                    ph, miktar, saat, saat * SAATLIK_BIRIM_FIYAT, tamir_aciklama, "Beklemede (İç Kayıt)", datetime.now().strftime("%Y-%m-%d %H:%M")
+                ]
+                st.info("Mevcut kayıt bulundu ve güncellendi.")
+            else:
+                # Yeni kayıt aç
+                yeni_satir = {
+                    "Kayit_ID": f"RWK-{len(df)+1:04d}", "İrsaliye_No": irsaliye, "Referans_No": ref, "Dönem_Yıl": yil, "Dönem_Ay": ay,
+                    "pH": ph, "Miktar": miktar, "Kayıp_Zaman_Nedeni": tamir_aciklama, "Yapılacak_İşin_Tanımı": "Rework İşlemi",
+                    "Talep_Edilen_Saat": saat, "Hakedis_Tutari": saat * SAATLIK_BIRIM_FIYAT, "Son_Durum": "Beklemede (İç Kayıt)", 
+                    "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
+                }
+                df = pd.concat([df, pd.DataFrame([yeni_satir])], ignore_index=True)
+                st.success("Yeni kayıt ana tabloya eklendi.")
+            
+            veriyi_yaz(df)
+            st.rerun()
 
 # --- TAB 2: KALİTE (ÖMER) ---
 with tab_kalite:
@@ -91,45 +112,33 @@ with tab_kalite:
             else: st.error("Hatalı Giriş!")
     else:
         st.sidebar.button("🚪 Ömer Bey (Çıkış)", on_click=logout)
-        st.success("Hoşgeldiniz Ömer Bey")
-        
         df_k = veriyi_oku()
         
-        # 1. BÖLÜM: KESİNLEŞMEMİŞ (İÇ) KAYITLAR
-        st.markdown("### 📋 1. Taslak ve İnceleme Listesi (Kesinleşmemiş)")
+        st.markdown("### 📋 1. Taslak / İç Kayıtlar (Eşleşen Veriler)")
         taslaklar = df_k[df_k["Son_Durum"] == "Beklemede (İç Kayıt)"]
         st.dataframe(taslaklar, use_container_width=True)
         
         if not taslaklar.empty:
-            st.markdown("#### ⚡ Kayıt Yönetimi")
             secilen_id = st.selectbox("İşlem Seçin", taslaklar["Kayit_ID"].tolist(), key="k_sec")
-            detay = taslaklar[taslaklar["Kayit_ID"] == secilen_id].iloc[0]
-            notu = st.text_area("Kalite Notu (Opsiyonel)", key="not_k")
+            notu = st.text_area("Kalite Notu / İnceleme Notu")
             
             c1, c2 = st.columns(2)
-            if c1.button("✅ MUTABAKAT LİSTESİNE AL", use_container_width=True):
-                # Bu buton veriyi "İnceleme Bekliyor"dan "Mutabakat Bekliyor"a çeker
+            if c1.button("✅ MUTABAKATA HAZIR", use_container_width=True):
                 df_k.loc[df_k["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu"]] = ["Mutabakat Bekliyor", notu]
                 veriyi_yaz(df_k); st.rerun()
-            
-            if c2.button("❌ KAYDI REDDET/SİL", use_container_width=True):
+            if c2.button("❌ REDDET", use_container_width=True):
                 df_k.loc[df_k["Kayit_ID"] == secilen_id, "Son_Durum"] = "Kalite Reddedildi"
                 veriyi_yaz(df_k); st.rerun()
 
         st.markdown("---")
+        st.markdown("### 📊 2. Raporu Gönder (Müşteri ile Kesinleşmiş)")
+        mutabakat = df_k[df_k["Son_Durum"] == "Mutabakat Bekliyor"]
+        st.dataframe(mutabakat, use_container_width=True)
         
-        # 2. BÖLÜM: MUTABAKAT VE RAPORLAMA
-        st.markdown("### 📊 2. Mutabık Kalınan Kayıtlar (Yöneticiye Raporlanacak)")
-        mutabakat_listesi = df_k[df_k["Son_Durum"] == "Mutabakat Bekliyor"]
-        st.dataframe(mutabakat_listesi, use_container_width=True)
-        
-        if not mutabakat_listesi.empty:
-            st.warning(f"Şu an mutabık kalınmış {len(mutabakat_listesi)} adet kayıt var.")
-            if st.button("📢 YÖNETİCİYE RAPORU GÖNDER (KESİNLEŞTİR)", use_container_width=True, type="primary"):
-                # TÜM mutabakat bekleyenleri "Onaylandı (Kesin)" yapar. Patron sadece bunları görür.
+        if not mutabakat.empty:
+            if st.button("📢 RAPORU YÖNETİCİYE GÖNDER", use_container_width=True, type="primary"):
                 df_k.loc[df_k["Son_Durum"] == "Mutabakat Bekliyor", "Son_Durum"] = "Onaylandı"
-                veriyi_yaz(df_k)
-                st.success("Rapor kesinleşti ve Yönetici paneline gönderildi!"); st.rerun()
+                veriyi_yaz(df_k); st.success("Kesinleşmiş rapor iletildi!"); st.rerun()
 
 # --- TAB 3: PATRON ---
 with tab_patron:
@@ -144,22 +153,15 @@ with tab_patron:
             else: st.error("Yetkisiz Giriş!")
     else:
         st.sidebar.button("🚪 Patron (Çıkış)", on_click=logout)
-        st.success("Kesinleşmiş Finansal Rapor (Müşteri Onaylı)")
-        
         df_p = veriyi_oku()
-        # Patron SADECE Ömer Bey'in "Raporu Gönder" dediği "Onaylandı" verileri görür
         kesin_liste = df_p[df_p["Son_Durum"] == "Onaylandı"]
         
         if not kesin_liste.empty:
             brut = kesin_liste["Hakedis_Tutari"].sum()
             kesinti = kesin_liste["Legrand_Kesinti_Tutari"].sum()
-            
             m1, m2, m3 = st.columns(3)
-            m1.metric("Kesinleşmiş Saat", f"{kesin_liste['Talep_Edilen_Saat'].sum():,.2f}")
+            m1.metric("Onaylı Saat", f"{kesin_liste['Talep_Edilen_Saat'].sum():,.2f}")
             m2.metric("Brüt Hakediş", f"{brut:,.2f} TL")
             m3.metric("Net Hakediş", f"{(brut - kesinti):,.2f} TL")
-            
-            st.write("### 📋 Kesinleşmiş İşlemler")
             st.dataframe(kesin_liste, use_container_width=True, hide_index=True)
-        else:
-            st.info("Ömer Bey tarafından henüz kesinleşmiş bir rapor gönderilmedi.")
+        else: st.info("Henüz kesinleşmiş rapor yok.")
