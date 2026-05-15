@@ -39,7 +39,7 @@ def veriyi_yaz(df):
 # --- WEB ARAYÜZÜ BAŞLIĞI ---
 st.title("⏱️ Kurumsal Kayıp Zaman ve Ek İşçilik Takip Motoru")
 st.markdown("Müşteri talepleri, iç üretim ve grup şirketleri ek işçilik süreç yönetim paneli.")
-st.hr()
+st.divider()
 
 # Sol Panel: Yeni Kayıt Girişi | Sağ Panel: Mevcut Veriler ve Güncelleme
 sol_kol, sag_kol = st.columns([1, 2])
