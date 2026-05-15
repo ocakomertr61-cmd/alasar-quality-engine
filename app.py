@@ -135,20 +135,46 @@ else:
                 veriyi_yaz(edited_df); st.success("Kaydedildi!"); st.rerun()
 
         with tab2:
+            st.subheader("Onay Bekleyen Kayıtlar")
+            # Sadece onay bekleyenleri filtrele
             taslaklar = df_genel[df_genel["Son_Durum"] == "Beklemede (İç Kayıt)"]
+            
             if not taslaklar.empty:
-                secilen_id = st.selectbox("İşlem Yapılacak Kayıt", taslaklar["Kayit_ID"].tolist())
+                secilen_id = st.selectbox("İşlem Yapılacak Kayıt ID", taslaklar["Kayit_ID"].tolist())
+                # Seçilen kaydın tüm verilerini çek
                 detay = taslaklar[taslaklar["Kayit_ID"] == secilen_id].iloc[0]
-                st.info(f"İrsaliye: {detay['İrsaliye_No']} | Ref: {detay['Referans_No']}")
-                notu = st.text_area("Kalite Notu")
+                
+                # --- DETAY GÖSTERİM ALANI ---
+                st.markdown(f"""
+                <div style="background-color:#f0f2f6; padding:15px; border-radius:10px; border-left:5px solid #2E86C1;">
+                    <h4 style="margin-top:0;">📋 Kayıt Detayları</h4>
+                    <table style="width:100%; font-size:14px;">
+                        <tr><td><b>Şirket:</b> {detay['Şirket']}</td><td><b>İrsaliye No:</b> {detay['İrsaliye_No']}</td></tr>
+                        <tr><td><b>Referans:</b> {detay['Referans_No']}</td><td><b>Miktar:</b> {detay['Miktar']} Adet</td></tr>
+                        <tr><td><b>Dönem:</b> {detay['Dönem_Ay']} / {detay['Dönem_Yıl']}</td><td><b>Veri Kaynağı:</b> {detay['Veri_Kaynagi']}</td></tr>
+                        <tr><td colspan="2"><b>Hata/İşlem Açıklaması:</b> {detay['Kayıp_Zaman_Nedeni']}</td></tr>
+                    </table>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.write("") # Boşluk
+                
+                notu = st.text_area("Kalite Notu / İnceleme Sonucu", placeholder="Mutabakata göndermeden önce notunuzu buraya ekleyebilirsiniz...")
+                
                 c1, c2 = st.columns(2)
-                if c1.button("✅ Mutabakata Gönder"):
-                    df_genel.loc[df_genel["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu"]] = ["Mutabakat Bekliyor", notu]
-                    veriyi_yaz(df_genel); st.rerun()
-                if c2.button("❌ Reddet"):
-                    df_genel.loc[df_genel["Kayit_ID"] == secilen_id, "Son_Durum"] = "Kalite Reddedildi"
-                    veriyi_yaz(df_genel); st.rerun()
-            else: st.info("Bekleyen kayıt yok.")
+                if c1.button("✅ Mutabakata Gönder", use_container_width=True):
+                    df_genel.loc[df_genel["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu", "Güncelleme_Tarihi"]] = ["Mutabakat Bekliyor", notu, datetime.now().strftime("%Y-%m-%d %H:%M")]
+                    veriyi_yaz(df_genel)
+                    st.success(f"{secilen_id} nolu kayıt mutabakata gönderildi.")
+                    st.rerun()
+                    
+                if c2.button("❌ Reddet / İptal Et", use_container_width=True):
+                    df_genel.loc[df_genel["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu", "Güncelleme_Tarihi"]] = ["Kalite Reddedildi", notu, datetime.now().strftime("%Y-%m-%d %H:%M")]
+                    veriyi_yaz(df_genel)
+                    st.warning("Kayıt reddedildi.")
+                    st.rerun()
+            else: 
+                st.info("Şu an onay bekleyen herhangi bir iç kayıt bulunmuyor.")
 
         with tab3:
             with st.form("full_manuel"):
