@@ -5,7 +5,6 @@ from datetime import datetime
 import io 
 import time
 import os
-from PIL import Image
 
 # --- SİSTEM VE DOSYA AYARLARI ---
 DB_FILE = "alasar_kalite_veritabani.xlsx"
@@ -77,7 +76,7 @@ def kalite_motoru_hesapla(G3, J3, K3, L3, M3, P3_p, Q3_p, R3_p, S3_p):
     else: return "UYGUN", "🟢", t3_skor, "#28A745" 
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Alasar Group Quality Engine V25.0", layout="wide")
+st.set_page_config(page_title="Alasar Group Quality Engine V26.0", layout="wide")
 
 if 'genel_giris' not in st.session_state: st.session_state.genel_giris = False
 if 'aktif_user' not in st.session_state: st.session_state.aktif_user = None
@@ -112,7 +111,6 @@ if st.session_state.aktif_user is None:
         else: st.error("Yetkisiz Erişim!")
     st.stop()
 
-# --- VERİ YÜKLEME ---
 u_role = st.session_state.aktif_user['role']
 u_sirket = st.session_state.aktif_user['sirket']
 ana_db = veriyi_excelden_yukle(DB_FILE)
@@ -161,56 +159,38 @@ elif u_role == "Kalite Müdürü":
     with t1:
         dof_analiz_paneli(sikayet_db, u_sirket)
         st.divider()
-        st.write("**Genel Arşiv**")
+        st.write("**Üretim Arşivi**")
         st.dataframe(ana_db[ana_db['Şirket'] == u_sirket].iloc[::-1] if not ana_db.empty else pd.DataFrame())
 
     with t2:
-        st.header("🏁 Detaylı 8D / DÖF Raporlama")
+        st.header("🏁 8D / DÖF Kaydı ve Arşivi")
         with st.form("full_8d_form"):
             d_no = otomatik_dof_no_uret(sikayet_db)
             st.info(f"Yeni Kayıt No: {d_no}")
-            
-            c1, c2 = st.columns(2)
-            m_ad = c1.text_input("Müşteri Adı")
-            s_tarih = c2.date_input("Şikayet / Tespit Tarihi")
-            
-            p_tanim = st.text_area("1. Problemin Tanımı (Hata nedir?)")
-            hata_gorsel = st.file_uploader("2. Hata Görseli Yükle", type=['jpg','png','pdf'])
-            kok_neden = st.text_area("3. Kök Neden Analizi (Neden oluştu?)")
-            
-            st.divider()
-            f1, f2, f3 = st.columns(3)
-            f_secilen = f1.text_area("4. Seçilen Faaliyetler")
-            f_kalici = f2.text_area("5. Uygulanan Kalıcı Faaliyetler")
-            f_onleyici = f3.text_area("6. Önleyici Faaliyetler")
-            
-            st.divider()
-            b1, b2 = st.columns(2)
-            durum = b1.selectbox("7. 8D Durumu", ["Başlatıldı", "Beklemede", "Kapatıldı"])
-            k_tarih = b2.text_input("8. Kapatılma Tarihi", "---")
+            c1, c2 = st.columns(2); m_ad = c1.text_input("Müşteri Adı"); s_tarih = c2.date_input("Tespit Tarihi")
+            p_tanim = st.text_area("1. Problemin Tanımı"); hata_gorsel = st.file_uploader("2. Görsel Yükle", type=['jpg','png','pdf'])
+            kok_neden = st.text_area("3. Kök Neden Analizi")
+            f1, f2, f3 = st.columns(3); f_secilen = f1.text_area("4. Seçilen Faaliyet"); f_kalici = f2.text_area("5. Kalıcı Faaliyet"); f_onleyici = f3.text_area("6. Önleyici Faaliyet")
+            b1, b2 = st.columns(2); durum = b1.selectbox("7. Durum", ["Başlatıldı", "Beklemede", "Kapatıldı"]); k_tarih = b2.text_input("8. Kapatılma Tarihi", "---")
             
             if st.form_submit_button("8D RAPORUNU KAYDET"):
-                y_8d = pd.DataFrame([{
-                    "Şirket": u_sirket, "DOF_No": d_no, "Müşteri": m_ad, "Tarih": s_tarih,
-                    "Tanım": p_tanim, "Kok_Neden": kok_neden, "S_Faaliyet": f_secilen,
-                    "K_Faaliyet": f_kalici, "O_Faaliyet": f_onleyici, "Durum": durum, "Kapanis": k_tarih
-                }])
-                veriyi_excele_kaydet(y_8d, SIKAYET_FILE)
-                st.success(f"{d_no} sisteme kaydedildi."); st.rerun()
+                y_8d = pd.DataFrame([{"Şirket": u_sirket, "DOF_No": d_no, "Müşteri": m_ad, "Tarih": s_tarih, "Tanım": p_tanim, "Kok_Neden": kok_neden, "S_Faaliyet": f_secilen, "K_Faaliyet": f_kalici, "O_Faaliyet": f_onleyici, "Durum": durum, "Kapanis": k_tarih}])
+                veriyi_excele_kaydet(y_8d, SIKAYET_FILE); st.success(f"{d_no} kaydedildi."); st.rerun()
+        
+        st.divider()
+        st.subheader("📋 8D / DÖF Kayıt Tablosu (Excel Arşivi)")
+        if not sikayet_db.empty:
+            s_8d_tablo = sikayet_db[sikayet_db['Şirket'] == u_sirket]
+            st.dataframe(s_8d_tablo.iloc[::-1])
+        else: st.info("Henüz 8D kaydı bulunmuyor.")
 
     with t3:
         st.subheader("Karar Havuzu")
         bekleyenler = [b for b in st.session_state.onay_bekleyenler if b['Şirket'] == u_sirket and not b.get("Patrona_Gitti", False)]
         for i, b in enumerate(bekleyenler):
-            with st.expander(f"Kayıt: {b['Parti No']} | TRI: {b['TRI']} | Hata: {b['Baskın Hata']}"):
-                st.markdown("**Operatörün Detaylı Hata Girişi:**")
-                st.table(pd.DataFrame({
-                    "P1 (Kritik)": [f"{b['P1_A']} Adet / {b['P1_S']} Şiddet"],
-                    "P2 (Majör)": [f"{b['P2_A']} Adet / {b['P2_S']} Şiddet"],
-                    "P3 (Minör)": [f"{b['P3_A']} Adet / {b['P3_S']} Şiddet"],
-                    "P4 (Görsel)": [f"{b['P4_A']} Adet / {b['P4_S']} Şiddet"]
-                }))
-                st.info(f"Operatör Açıklaması: {b['Not']}")
+            with st.expander(f"Kayıt: {b['Parti No']} | TRI: {b['TRI']}"):
+                st.table(pd.DataFrame({"Kritik (P1)": [b['P1_A']], "Majör (P2)": [b['P2_A']], "Minör (P3)": [b['P3_A']], "Görsel (P4)": [b['P4_A']]}))
+                st.info(f"Op. Notu: {b['Not']}")
                 aks = st.selectbox("Nihai Karar", ["Kabul", "Şartlı Kabul", "Karantina", "ÜST YÖNETİCİYE SEVK (PATRON)", "İade"], key=f"km_{i}")
                 n = st.text_input("Karar Notu", key=f"kn_{i}")
                 if st.button("UYGULA", key=f"kb_{i}"):
@@ -230,35 +210,24 @@ elif u_role == "Genel Müdür":
     s_sec = st.radio("Şirket Seçimi:", ["Alasar Grup", "Hakan Kalıp Plastik"], horizontal=True)
     patron_onay = [x for x in st.session_state.onay_bekleyenler if x.get("Patrona_Gitti") and x['Şirket'] == s_sec]
     
-    # BÜYÜK UYARI PANELİ
     if patron_onay:
-        st.markdown(f"""
-            <div style="background-color:#FF4B4B; padding:25px; border-radius:10px; border: 4px solid white; text-align:center;">
-                <h1 style="color:white; margin:0;">🚨 ACİL ONAY BEKLEYEN {len(patron_onay)} ADET SEVK VAR!</h1>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color:#FF4B4B; padding:20px; border-radius:10px; text-align:center;"><h2 style="color:white;">🚨 ACİL ONAY BEKLEYEN {len(patron_onay)} SEVK!</h2></div>', unsafe_allow_html=True)
     
     dof_analiz_paneli(sikayet_db, s_sec)
-    
     st.divider()
-    col1, col2 = st.columns([2,1])
     
+    col1, col2 = st.columns([2,1])
     with col1:
         st.subheader("👔 Kritik Sevk Onayları")
-        if not patron_onay: st.info("Bekleyen kritik onay yok.")
         for i, p in enumerate(patron_onay):
             with st.container():
                 st.markdown(f"### Parti: {p['Parti No']} | TRI: {p['TRI']}")
-                st.error(f"**Operatörün Notu:** {p['Not']}")
-                st.warning(f"**Kalite Müdürü Notu:** {p.get('Mudur_Notu')}")
-                # Hata Detay Tablosu
-                st.table(pd.DataFrame({
-                    "Hata Türü": ["Kritik (P1)", "Majör (P2)", "Minör (P3)", "Görsel (P4)"],
-                    "Adet": [p['P1_A'], p['P2_A'], p['P3_A'], p['P4_A']]
-                }))
-                p_aks = st.radio("Kararınız", ["SEVK İZNİ VER", "ŞARTLI SEVK", "SEVKİ DURDUR"], key=f"pa_{i}")
-                if st.button("KARARI MÜHÜRLE", key=f"pb_{i}"):
-                    p.update({"Yönetici Aksiyonu": f"PATRON: {p_aks}", "Onay_Tarihi": datetime.now()})
+                st.warning(f"Kalite Müdürü Notu: {p.get('Mudur_Notu')}")
+                st.table(pd.DataFrame({"P1": [p['P1_A']], "P2": [p['P2_A']], "Hata": [p['Baskın Hata']]}))
+                p_aks = st.radio("Karar", ["SEVK İZNİ VER", "ŞARTLI SEVK", "SEVKİ DURDUR"], key=f"pa_{i}")
+                p_not = st.text_input("Patron Notu", key=f"pn_{i}")
+                if st.button("MÜHÜRLE", key=f"pb_{i}"):
+                    p.update({"Yönetici Aksiyonu": f"PATRON: {p_aks}", "Patron_Notu": p_not, "Onay_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")})
                     veriyi_excele_kaydet(pd.DataFrame([p]), DB_FILE)
                     st.session_state.onay_bekleyenler = [x for x in st.session_state.onay_bekleyenler if x['Parti No'] != p['Parti No']]
                     st.rerun()
@@ -268,7 +237,15 @@ elif u_role == "Genel Müdür":
         st.subheader("🚨 Son 8D / DÖF Durumları")
         if not sikayet_db.empty:
             st.dataframe(sikayet_db[sikayet_db['Şirket'] == s_sec][['DOF_No', 'Müşteri', 'Durum']].tail(10))
-        else: st.write("Şikayet kaydı bulunmuyor.")
+
+    st.divider()
+    st.subheader("📜 Genel Müdür (Patron) Karar Geçmişi")
+    if not ana_db.empty:
+        # Sadece Patronun karar verdiği satırları filtrele
+        p_gecmis = ana_db[(ana_db['Şirket'] == s_sec) & (ana_db['Yönetici Aksiyonu'].str.contains("PATRON", na=False))]
+        if not p_gecmis.empty:
+            st.dataframe(p_gecmis[['Tarih', 'Parti No', 'TRI', 'Baskın Hata', 'Yönetici Aksiyonu', 'Patron_Notu']].iloc[::-1])
+        else: st.info("Henüz mühürlediğiniz bir kayıt bulunmuyor.")
 
 # --- İNDİRME ---
 st.sidebar.divider()
