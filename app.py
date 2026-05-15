@@ -39,7 +39,7 @@ def veriyi_yaz(df):
 # --- WEB ARAYÜZÜ BAŞLIĞI ---
 st.title("⏱️ Kurumsal Kayıp Zaman ve Ek İşçilik Takip Motoru")
 st.markdown("Müşteri talepleri, iç üretim ve grup şirketleri ek işçilik süreç yönetim paneli.")
-st.divider()
+st.markdown("---") # Hata riski sıfır olan standart ayraç çizgi
 
 # Sol Panel: Yeni Kayıt Girişi | Sağ Panel: Mevcut Veriler ve Güncelleme
 sol_kol, sag_kol = st.columns([1, 2])
@@ -100,7 +100,7 @@ with sag_kol:
             "Kayit_ID", "Şirket", "Referans_No", "Talep_Edilen_Saat", "Son_Durum", "Güncelleme_Tarihi"
         ]], use_container_width=True, hide_index=True)
         
-        st.hr()
+        st.markdown("---") # Hata riski sıfır olan standart ayraç çizgi
         st.subheader("🔄 Durum Güncelleme Paneli")
         
         # Güncellenecek ID ve Yeni Durum Seçimi yan yana
