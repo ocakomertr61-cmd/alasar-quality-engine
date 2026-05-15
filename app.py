@@ -189,13 +189,57 @@ else:
             st.dataframe(p_onay, use_container_width=True, hide_index=True)
         else: st.info("Kayıt yok.")
 
-    # --- REWORK PANELİ ---
+   # --- REWORK PANELİ ---
     elif st.session_state['auth_role'] == 'rework':
-        st.header("🛠️ Rework Giriş")
+        st.header("🛠️ Rework Birimi - Yeni İş Girişi")
+        
         with st.form("rew_form"):
-            r_irs = st.text_input("İrsaliye No"); r_ref = st.text_input("Referans No"); r_mik = st.number_input("Miktar", 1)
-            if st.form_submit_button("Gönder"):
-                r_saat = round(r_mik / 7.0, 2)
-                yeni_rew = {"Kayit_ID": f"REW-{len(df_genel)+1}", "İrsaliye_No": r_irs, "Referans_No": r_ref, "Miktar": r_mik, "Talep_Edilen_Saat": r_saat, "Son_Durum": "Beklemede (İç Kayıt)", "Dönem_Yıl": "2026", "Dönem_Ay": "Mayıs"}
-                df_genel = pd.concat([df_genel, pd.DataFrame([yeni_rew])], ignore_index=True)
-                veriyi_yaz(df_genel); st.success("Kayıt iletildi.")
+            col_r1, col_r2 = st.columns(2)
+            
+            with col_r1:
+                r_sirket = st.selectbox("İşin Ait Olduğu Şirket", ["Alaşar", "Legrand", "Siemens", "Hakan Kalıp Plastik"])
+                r_irs = st.text_input("İrsaliye No")
+                r_ref = st.text_input("Referans No")
+            
+            with col_r2:
+                r_mik = st.number_input("Miktar (Adet)", min_value=1, step=1)
+                # Rework birimi için varsayılan hız genelde 7'dir, gerekirse Ömer Bey ana tablodan düzeltebilir
+                r_ay = st.selectbox("Dönem Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"], index=datetime.now().month - 1)
+                r_yil = st.selectbox("Dönem Yıl", ["2025", "2026", "2027"], index=1)
+            
+            r_neden = st.text_area("Hata / Kayıp Zaman Nedeni (Açıklama)")
+            
+            submit_rew = st.form_submit_button("Kayıt Oluştur ve Kaliteye Gönder", use_container_width=True)
+            
+            if submit_rew:
+                if not r_irs or not r_ref:
+                    st.error("Lütfen İrsaliye ve Referans numaralarını boş bırakmayın!")
+                else:
+                    # Otomatik saat hesaplama (Varsayılan pH: 7.0)
+                    varsayilan_ph = 7.0
+                    r_saat = round(r_mik / varsayilan_ph, 2)
+                    
+                    yeni_rew = {
+                        "Kayit_ID": f"REW-{datetime.now().strftime('%d%H%M%S')}", # Benzersiz ID
+                        "Şirket": r_sirket,
+                        "İrsaliye_No": r_irs,
+                        "Referans_No": r_ref,
+                        "Miktar": r_mik,
+                        "pH": varsayilan_ph,
+                        "Dönem_Ay": r_ay,
+                        "Dönem_Yıl": r_yil,
+                        "Kayıp_Zaman_Nedeni": r_neden,
+                        "Talep_Edilen_Saat": r_saat,
+                        "Hakedis_Tutari": r_saat * SAATLIK_BIRIM_FIYAT,
+                        "Son_Durum": "Beklemede (İç Kayıt)", # Ömer Bey'in onayına düşmesi için
+                        "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Veri_Kaynagi": "REWORK BİRİMİ"
+                    }
+                    
+                    # Veriyi ekle ve kaydet
+                    df_genel = pd.concat([df_genel, pd.DataFrame([yeni_rew])], ignore_index=True)
+                    veriyi_yaz(df_genel)
+                    st.success(f"Kayıt başarıyla oluşturuldu! İrsaliye No: {r_irs}")
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
