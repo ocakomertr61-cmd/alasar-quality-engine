@@ -160,15 +160,16 @@ else:
     elif st.session_state['auth_role'] == 'patron':
         st.header("👑 Kesinleşmiş Finansal Raporlar")
         df_p = veriyi_oku()
-        kesin = df_p[df_p["Son_Durum"] == "Onaylandı"].copy()
-        if not kesin.empty:
-            st.metric("Toplam Hakediş (Net)", f"{(pd.to_numeric(kesin['Hakedis_Tutari']).sum() - pd.to_numeric(kesin['Legrand_Kesinti_Tutari']).sum()):,.2f} TL")
-            st.dataframe(kesin, use_container_width=True)
-        else: st.warning("Onaylı kayıt bulunamadı.")import streamlit as st
-import pandas as pd
-import os
-import time
-from datetime import datetime
+        if not df_p.empty:
+            kesin = df_p[df_p["Son_Durum"] == "Onaylandı"].copy()
+            if not kesin.empty:
+                net_tutar = pd.to_numeric(kesin['Hakedis_Tutari']).sum() - pd.to_numeric(kesin['Legrand_Kesinti_Tutari']).sum()
+                st.metric("Toplam Onaylı Net Hakediş", f"{net_tutar:,.2f} TL")
+                st.dataframe(kesin, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Onaylı kayıt bulunamadı.")
+        else:
+            st.info("Veritabanı boş.")
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(page_title="Alaşar Kurumsal Takip", layout="wide")
