@@ -131,61 +131,44 @@ else:
 
         tab1, tab2, tab3, tab4 = st.tabs(["📊 ANA TABLO & DÜZENLEME", "✅ ONAY BEKLEYENLER", "➕ FULL MANUEL KAYIT", "📉 LEGRAND KESİNTİ GİRİŞİ"])
         
-        # --- ÖMER BEY PANELİ - GÜNCELLENMİŞ ANA TABLO KISMI ---
-
-with tab1:
-    st.subheader("📊 Veritabanı Yönetimi & Saat Revizesi")
-    st.info("Müşteriden gelen geri bildirime göre 'Talep_Edilen_Saat' sütununu güncelleyebilirsiniz. Kaydet dediğinizde tutarlar otomatik hesaplanır.")
-    
-    # Kesinti sütununu tabloda kalabalık yapmasın diye ayırıyoruz
-    df_viz = df_genel.drop(columns=["Legrand_Kesinti_Tutari"]) if "Legrand_Kesinti_Tutari" in df_genel.columns else df_genel
-    
-    # Düzenleme Modu
-    df_viz.insert(0, "Seç", False)
-    edited_df = st.data_editor(
-        df_viz, 
-        use_container_width=True, 
-        hide_index=True, 
-        num_rows="dynamic",
-        column_config={
-            "Talep_Edilen_Saat": st.column_config.NumberColumn(
-                "Onaylanan Saat",
-                help="Müşterinin onayladığı nihai saati buraya giriniz.",
-                min_value=0.0,
-                format="%.2f"
-            ),
-            "Hakedis_Tutari": st.column_config.NumberColumn(
-                "Hakediş (Otomatik)",
-                help="Saat değiştikçe bu alan otomatik güncellenir.",
-                disabled=True, # Manuel müdahaleye gerek yok, saatten hesaplanacak
-                format="%.0f TL"
+        with tab1:
+            st.subheader("📊 Veritabanı Yönetimi & Saat Revizesi")
+            st.info("Müşteriden onay aldığınız her kalem ürünün saatini aşağıdan güncelleyip 'Kaydet'e basınız.")
+            
+            df_viz = df_genel.drop(columns=["Legrand_Kesinti_Tutari"]) if "Legrand_Kesinti_Tutari" in df_genel.columns else df_genel
+            df_viz.insert(0, "Seç", False)
+            
+            edited_df = st.data_editor(
+                df_viz, 
+                use_container_width=True, 
+                hide_index=True, 
+                num_rows="dynamic",
+                column_config={
+                    "Talep_Edilen_Saat": st.column_config.NumberColumn("Onaylanan Saat", format="%.2f"),
+                    "Hakedis_Tutari": st.column_config.NumberColumn("Hakediş (Otomatik)", disabled=True, format="%.0f TL")
+                }
             )
-        }
-    )
-    
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("💾 Değişiklikleri ve Saatleri Kaydet", use_container_width=True):
-            clean_edited = edited_df.drop(columns=["Seç"])
             
-            # --- KRİTİK NOKTA: Saate göre tutarı yeniden hesapla ---
-            clean_edited["Talep_Edilen_Saat"] = pd.to_numeric(clean_edited["Talep_Edilen_Saat"], errors='coerce').fillna(0)
-            clean_edited["Hakedis_Tutari"] = clean_edited["Talep_Edilen_Saat"] * SAATLIK_BIRIM_FIYAT
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("💾 Değişiklikleri ve Saatleri Kaydet", use_container_width=True):
+                    clean_edited = edited_df.drop(columns=["Seç"])
+                    # Saate göre tutarı güncelle
+                    clean_edited["Talep_Edilen_Saat"] = pd.to_numeric(clean_edited["Talep_Edilen_Saat"], errors='coerce').fillna(0)
+                    clean_edited["Hakedis_Tutari"] = clean_edited["Talep_Edilen_Saat"] * SAATLIK_BIRIM_FIYAT
+                    # Kesinti sütununu ekleyerek kaydet
+                    final_df = pd.concat([clean_edited, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
+                    veriyi_yaz(final_df)
+                    st.success("Veritabanı güncellendi!")
+                    st.rerun()
             
-            # Kesinti verilerini kaybetmeden ana tabloyu birleştir
-            final_df = pd.concat([clean_edited, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
-            
-            veriyi_yaz(final_df)
-            st.success("Tüm saatler ve hakedişler güncellendi!")
-            st.rerun()
-    
-    with col_btn2:
-        if st.button("🗑️ SEÇİLİ SATIRLARI SİL", type="primary", use_container_width=True):
-            indices_to_keep = edited_df[edited_df["Seç"] == False].index
-            final_df = df_genel.iloc[indices_to_keep]
-            veriyi_yaz(final_df)
-            st.warning("Seçilen kayıtlar silindi.")
-            st.rerun()
+            with col_btn2:
+                if st.button("🗑️ SEÇİLİ SATIRLARI SİL", type="primary", use_container_width=True):
+                    indices_to_keep = edited_df[edited_df["Seç"] == False].index
+                    final_df = df_genel.iloc[indices_to_keep]
+                    veriyi_yaz(final_df)
+                    st.warning("Seçilen kayıtlar silindi.")
+                    st.rerun()
 
         with tab2:
             st.subheader("Onay Bekleyen Kayıtlar")
@@ -225,7 +208,6 @@ with tab1:
 
         with tab4:
             st.subheader("📉 LEGRAND KESİNTİ GİRİŞİ")
-            st.markdown("Buradan girilen tutar ilgili ayın genel hakedişinden düşülecektir.")
             with st.form("legrand_kesinti_form"):
                 k_yil = st.selectbox("Kesinti Yılı", ["2025", "2026", "2027"], index=1)
                 k_ay = st.selectbox("Kesinti Ayı", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
