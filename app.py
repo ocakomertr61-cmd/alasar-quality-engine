@@ -13,7 +13,7 @@ KOLONLAR = [
     "Kayıp_Zaman_Nedeni", "Yapılacak_İşin_Tanımı", "Onay_Veren", "Talep_Edilen_Saat",
     "Müşteri_Onay_Tarihi", "Talep_Tarihi", "Son_Durum", "Güncelleme_Tarihi",
     "Yonetici_Onay_Durumu", "Hakedis_Tutari", "Legrand_Kesinti_Tutari", "Kalite_Notu",
-    "Veri_Kaynagi" # Yeni Kolon: Verinin nereden geldiğini anlamak için
+    "Veri_Kaynagi"
 ]
 SAATLIK_BIRIM_FIYAT = 491
 
@@ -158,7 +158,6 @@ else:
         
         with tab1:
             st.subheader("Müşteri Kayıp Zaman Takip Ana Tablosu")
-            # Kaynağa göre renklendirme veya etiketleme görünür olacak
             st.dataframe(df_k, use_container_width=True, hide_index=True)
             
         with tab2:
@@ -166,11 +165,8 @@ else:
             if not taslaklar.empty:
                 st.subheader("Onay Bekleyen Kayıtlar")
                 secilen_id = st.selectbox("Detayını Görmek ve İşlem Yapmak İçin Seçin", taslaklar["Kayit_ID"].tolist())
-                
-                # SEÇİLEN KAYDIN DETAYLARI (Ömer Bey'in görebilmesi için)
                 detay = taslaklar[taslaklar["Kayit_ID"] == secilen_id].iloc[0]
                 
-                # Detay Görünümü Kartı
                 st.markdown(f"""
                 <div style="background-color:#F0F2F6; padding:20px; border-radius:10px; border-left: 5px solid #2E86C1;">
                     <h4>📋 Kayıt Detayları ({detay['Veri_Kaynagi']})</h4>
@@ -179,35 +175,29 @@ else:
                         <p><b>Referans No:</b> {detay['Referans_No']}</p>
                         <p><b>Dönem:</b> {detay['Dönem_Ay']} {detay['Dönem_Yıl']}</p>
                     </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <p><b>pH (Hız):</b> {detay['pH']}</p>
-                        <p><b>Miktar:</b> {detay['Miktar']}</p>
-                        <p><b>Hesaplanan Saat:</b> {detay['Talep_Edilen_Saat']}</p>
-                    </div>
                     <p><b>Hata/İşlem Nedeni:</b> {detay['Kayıp_Zaman_Nedeni']}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
-                notu = st.text_area("Özel Kalite/Mutabakat Notunuz", placeholder="Buraya eklemek istediğiniz notu yazın...")
-                
+                notu = st.text_area("Özel Kalite/Mutabakat Notunuz")
                 c1, c2 = st.columns(2)
                 if c1.button("✅ MUTABAKATA GÖNDER", use_container_width=True):
                     df_k.loc[df_k["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu"]] = ["Mutabakat Bekliyor", notu]
                     veriyi_yaz(df_k); st.rerun()
-                if c2.button("❌ KAYDI REDDET / SİL", use_container_width=True):
+                if c2.button("❌ KAYDI REDDET", use_container_width=True):
                     df_k.loc[df_k["Kayit_ID"] == secilen_id, "Son_Durum"] = "Kalite Reddedildi"
                     veriyi_yaz(df_k); st.rerun()
             else:
                 st.info("Şu an onay bekleyen bir kayıt bulunmuyor.")
             
             st.markdown("---")
-            st.subheader("📢 Mutabık Kalınanlar (Yönetici Onayına Hazır)")
+            st.subheader("📢 Mutabık Kalınanlar")
             mutabakat = df_k[df_k["Son_Durum"] == "Mutabakat Bekliyor"]
             st.dataframe(mutabakat, use_container_width=True)
             if not mutabakat.empty:
                 if st.button("TÜMÜNÜ KESİNLEŞTİR VE PATRONA GÖNDER", type="primary", use_container_width=True):
                     df_k.loc[df_k["Son_Durum"] == "Mutabakat Bekliyor", "Son_Durum"] = "Onaylandı"
-                    veriyi_yaz(df_k); st.success("Rapor başarıyla kesinleşti."); st.rerun()
+                    veriyi_yaz(df_k); st.success("Rapor kesinleşti."); st.rerun()
 
         with tab3:
             st.subheader("Ömer Bey - Manuel Kayıt Girişi")
@@ -222,25 +212,43 @@ else:
                     m_mik = st.number_input("Miktar", min_value=1, value=1)
                     m_sirket = st.selectbox("Şirket", ["Alaşar", "Hakan Kalıp Plastik"])
                 
-                # Hatanın alındığı yer burasıydı, altındaki kodlar içeri çekildi:
                 if st.form_submit_button("Sisteme Manuel Ekle"):
                     m_saat = round(m_mik / m_ph, 2)
                     yeni_manuel = {
-                        "Kayit_ID": f"MAN-{len(df_k)+1:04d}", 
-                        "Şirket": m_sirket, 
-                        "İrsaliye_No": m_irs, 
-                        "Referans_No": m_ref, 
-                        "pH": m_ph, 
-                        "Miktar": m_mik, 
-                        "Kayıp_Zaman_Nedeni": m_neden, 
-                        "Talep_Edilen_Saat": m_saat,
-                        "Hakedis_Tutari": m_saat * SAATLIK_BIRIM_FIYAT, 
-                        "Son_Durum": "Beklemede (İç Kayıt)", 
-                        "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                        "Kayit_ID": f"MAN-{len(df_k)+1:04d}", "Şirket": m_sirket, "İrsaliye_No": m_irs, 
+                        "Referans_No": m_ref, "pH": m_ph, "Miktar": m_mik, "Kayıp_Zaman_Nedeni": m_neden, 
+                        "Talep_Edilen_Saat": m_saat, "Hakedis_Tutari": m_saat * SAATLIK_BIRIM_FIYAT, 
+                        "Son_Durum": "Beklemede (İç Kayıt)", "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"), 
                         "Veri_Kaynagi": "MANUEL (ÖMER)"
                     }
-                    # DataFrame'e ekle ve kaydet
                     df_k = pd.concat([df_k, pd.DataFrame([yeni_manuel])], ignore_index=True)
-                    veriyi_yaz(df_k)
-                    st.success("Manuel kayıt eklendi.")
-                    st.rerun()
+                    veriyi_yaz(df_k); st.success("Manuel kayıt eklendi."); st.rerun()
+
+    # --- 👑 PATRON PANELİ ---
+    elif st.session_state['auth_role'] == 'patron':
+        st.header("👑 Kesinleşmiş Finansal Raporlar")
+        df_p = veriyi_oku()
+        
+        if not df_p.empty:
+            df_p["Son_Durum"] = df_p["Son_Durum"].astype(str).str.strip()
+            kesin_liste = df_p[df_p["Son_Durum"] == "Onaylandı"].copy()
+            
+            if not kesin_liste.empty:
+                kesin_liste["Hakedis_Tutari"] = pd.to_numeric(kesin_liste["Hakedis_Tutari"], errors='coerce').fillna(0)
+                kesin_liste["Talep_Edilen_Saat"] = pd.to_numeric(kesin_liste["Talep_Edilen_Saat"], errors='coerce').fillna(0)
+                kesin_liste["Legrand_Kesinti_Tutari"] = pd.to_numeric(kesin_liste["Legrand_Kesinti_Tutari"], errors='coerce').fillna(0)
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Toplam Onaylı Saat", f"{kesin_liste['Talep_Edilen_Saat'].sum():,.2f} sa")
+                m2.metric("Brüt Hakediş", f"{kesin_liste['Hakedis_Tutari'].sum():,.2f} TL")
+                m3.metric("Net Hakediş", f"{(kesin_liste['Hakedis_Tutari'].sum() - kesin_liste['Legrand_Kesinti_Tutari'].sum()):,.2f} TL")
+                
+                st.markdown("---")
+                st.dataframe(kesin_liste, use_container_width=True, hide_index=True)
+                
+                csv = kesin_liste.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Onaylı Listeyi İndir (CSV)", data=csv, file_name="Alasar_Rapor.csv", mime="text/csv")
+            else:
+                st.warning("⚠️ Onaylanmış (Patrona gönderilmiş) kayıt bulunamadı.")
+        else:
+            st.error("Veritabanı henüz boş.")
