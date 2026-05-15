@@ -1,143 +1,120 @@
+import streamlit as st
+import pandas as pd
 import os
 from datetime import datetime
-import pandas as pd
-import sys
 
-class KurumsalKayipZamanMotoru:
-    def __init__(self, dosya_adi="kurumsal_takip_veritabani.xlsx"):
-        self.dosya_adi = dosya_adi
-        self.gecerli_sirketler = ["Hakan Kalıp Plastik", "Alaşar"]
-        self.gecerli_durumlar = ["Onaylandı", "Red Oldu", "Revize Edilerek Onaylandı", "İptal"]
-        
-        self.kolonlar = [
-            "Kayit_ID", "Şirket", "Referans_No", "pH", "Miktar", 
-            "Kayıp_Zaman_Nedeni", "Yapılacak_İşin_Tanımı", "Talep_Edilen_Saat",
-            "Müşteri_Onay_Tarihi", "Talep_Tarihi", "Son_Durum", "Güncelleme_Tarihi"
-        ]
-        self._veritabanini_hazirla()
+# Sayfa Genişlik Ayarı
+st.set_page_config(page_title="Kurumsal Kayıp Zaman Motoru", layout="wide")
 
-    def _ekrana_yaz(self, mesaj):
-        """Terminal tamponunu (buffer) zorla boşaltarak yazının anında ekrana gelmesini sağlar."""
-        print(mesaj)
-        sys.stdout.flush()
+DOSYA_ADI = "kurumsal_takip_veritabani.xlsx"
+KOLONLAR = [
+    "Kayit_ID", "Şirket", "Referans_No", "pH", "Miktar", 
+    "Kayıp_Zaman_Nedeni", "Yapılacak_İşin_Tanımı", "Talep_Edilen_Saat",
+    "Müşteri_Onay_Tarihi", "Talep_Tarihi", "Son_Durum", "Güncelleme_Tarihi"
+]
 
-    def _veritabanini_hazirla(self):
-        """Excel dosyası yoksa güvenli bir şekilde oluşturur."""
-        try:
-            if not os.path.exists(self.dosya_adi):
-                df = pd.DataFrame(columns=self.kolonlar)
-                df.to_excel(self.dosya_adi, index=False)
-                self._ekrana_yaz(f"[SİSTEM] Yeni Excel veritabanı oluşturuldu: {self.dosya_adi}")
-        except Exception as e:
-            self._ekrana_yaz(f"[KRİTİK HATA] Excel dosyasına erişilemiyor! Hata: {e}")
+# --- EXCEL VERİTABANI HAZIRLAMA ---
+if not os.path.exists(DOSYA_ADI):
+    df = pd.DataFrame(columns=KOLONLAR)
+    df.to_excel(DOSYA_ADI, index=False)
 
-    def yeni_kayit_ekle(self, sirket, ref_no, ph, miktar, neden, is_tanimi, talep_tarihi, onay_tarihi="-", durum="Onaylandı"):
-        """Sisteme yeni kayıt ekler ve Miktar/pH formülünü işletir."""
-        if sirket not in self.gecerli_sirketler:
-            self._ekrana_yaz(f"[HATA] Geçersiz şirket! Şunlardan biri olmalı: {self.gecerli_sirketler}")
-            return False
+def veriyi_oku():
+    try:
+        return pd.read_excel(DOSYA_ADI)
+    except PermissionError:
+        st.error(f"⚠️ HATA: '{DOSYA_ADI}' dosyası şu an Excel'de açık! Lütfen Excel programını kapatın.")
+        return pd.DataFrame(columns=KOLONLAR)
+    except Exception as e:
+        st.error(f"Dosya okuma hatası: {e}")
+        return pd.DataFrame(columns=KOLONLAR)
 
-        if durum not in self.gecerli_durumlar:
-            self._ekrana_yaz(f"[HATA] Geçersiz durum! Şunlardan biri olmalı: {self.gecerli_durumlar}")
-            return False
+def veriyi_yaz(df):
+    try:
+        df.to_excel(DOSYA_ADI, index=False)
+        return True
+    except PermissionError:
+        st.error(f"⚠️ KİLİTLENME HATASI: Veriler Excel'e yazılamadı çünkü dosya açık! Lütfen Excel'i kapatın.")
+        return False
 
-        # --- TALEP EDİLEN SAAT HESAPLAMA (Miktar / pH) ---
-        try:
-            sayisal_ph = float(ph)
-            sayisal_miktar = float(miktar)
-            talep_edilen_saat = round(sayisal_miktar / sayisal_ph, 2) if sayisal_ph != 0 else 0.0
-        except (ValueError, TypeError):
-            self._ekrana_yaz("[UYARI] pH veya Miktar sayısal değil! Saat 0.0 kabul edildi.")
-            talep_edilen_saat = 0.0
+# --- WEB ARAYÜZÜ BAŞLIĞI ---
+st.title("⏱️ Kurumsal Kayıp Zaman ve Ek İşçilik Takip Motoru")
+st.markdown("Müşteri talepleri, iç üretim ve grup şirketleri ek işçilik süreç yönetim paneli.")
+st.hr()
 
-        # --- GÜVENLİ DOSYA YAZMA ---
-        try:
-            df = pd.read_excel(self.dosya_adi) if os.path.exists(self.dosya_adi) else pd.DataFrame(columns=self.kolonlar)
-            yeni_id = f"REQ-{(len(df) + 1):04d}"
+# Sol Panel: Yeni Kayıt Girişi | Sağ Panel: Mevcut Veriler ve Güncelleme
+sol_kol, sag_kol = st.columns([1, 2])
 
-            yeni_satir = {
-                "Kayit_ID": yeni_id, "Şirket": sirket, "Referans_No": ref_no, "pH": ph, "Miktar": miktar,
-                "Kayıp_Zaman_Nedeni": neden, "Yapılacak_İşin_Tanımı": is_tanimi, "Talep_Edilen_Saat": talep_edilen_saat,
-                "Müşteri_Onay_Tarihi": onay_tarihi, "Talep_Tarihi": talep_tarihi, "Son_Durum": durum,
-                "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-
-            df = pd.concat([df, pd.DataFrame([yeni_satir])], ignore_index=True)
-            df.to_excel(self.dosya_adi, index=False)
-            self._ekrana_yaz(f"[BAŞARILI] {yeni_id} eklendi ({sirket}). Hesaplanan Saat: {talep_edilen_saat}")
-            return True
-        except PermissionError:
-            self._ekrana_yaz(f"[KİLİTLENME HATASI] Excel dosyası açık olduğundan yazılamadı! Lütfen kapatın.")
-            return False
-        except Exception as e:
-            self._ekrana_yaz(f"[HATA] Dosya yazma hatası: {e}")
-            return False
-
-    def durum_guncelle(self, kayit_id, yeni_durum):
-        """Kayıt durumunu günceller."""
-        if yeni_durum not in self.gecerli_durumlar:
-            self._ekrana_yaz(f"[HATA] Geçersiz durum: {yeni_durum}")
-            return False
-
-        try:
-            df = pd.read_excel(self.dosya_adi)
-            if kayit_id in df["Kayit_ID"].values:
-                df.loc[df["Kayit_ID"] == kayit_id, "Son_Durum"] = yeni_durum
-                df.loc[df["Kayit_ID"] == kayit_id, "Güncelleme_Tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                df.to_excel(self.dosya_adi, index=False)
-                self._ekrana_yaz(f"[GÜNCELLENDİ] {kayit_id} yeni durumu: '{yeni_durum}'")
-                return True
-            else:
-                self._ekrana_yaz(f"[HATA] {kayit_id} bulunamadı!")
-                return False
-        except PermissionError:
-            self._ekrana_yaz(f"[KİLİTLENME HATASI] Excel açık olduğundan durum güncellenemedi!")
-            return False
-
-    def verileri_goster(self):
-        try:
-            return pd.read_excel(self.dosya_adi)
-        except Exception:
-            return pd.DataFrame()
-
-
-# --- DONMAYI ÖSLEYEN PANEL ÇALIŞTIRICISI ---
-if __name__ == "__main__":
-    motor = KurumsalKayipZamanMotoru()
-
-    motor._ekrana_yaz("\n==================================================")
-    motor._ekrana_yaz("    KAYIP ZAMAN TAKİP MOTORU BAŞLATILIYOR...     ")
-    motor._ekrana_yaz("==================================================")
-
-    motor._ekrana_yaz("\n[1] TEST VERİLERİ YÜKLENİYOR...")
+with sol_kol:
+    st.subheader("📝 Yeni Talep Girişi")
     
-    # Hakan Kalıp: 1250 / 5.5 = 227.27 Saat
-    motor.yeni_kayit_ekle(
-        sirket="Hakan Kalıp Plastik", ref_no="REF-9921", ph="5.5", miktar=1250,
-        neden="Kalıp yüzeyinde çapaklanma", is_tanimi="Ekstra çapak temizleme işlemi",
-        talep_tarihi="2026-05-12", durum="Red Oldu"
-    )
-
-    # Alaşar: 500 / 7.2 = 69.44 Saat
-    motor.yeni_kayit_ekle(
-        sirket="Alaşar", ref_no="REF-4412", ph="7.2", miktar=500,
-        neden="Müşteri revizyon talebi (Legrand)", is_tanimi="Montaj hattında parça değişimi",
-        talep_tarihi="2026-05-14", onay_tarihi="2026-05-15", durum="Onaylandı"
-    )
-
-    motor._ekrana_yaz("\n[2] MEVCUT VERİ TABANI ÖZETİ:")
-    tablo = motor.verileri_goster()
-    if not tablo.empty:
-        print(tablo[["Kayit_ID", "Şirket", "Talep_Edilen_Saat", "Son_Durum"]].to_string(index=False))
-        sys.stdout.flush()
-
-    motor._ekrana_yaz("\n[3] REQ-0001 DURUMU GÜNCELLENİYOR...")
-    motor.durum_guncelle(kayit_id="REQ-0001", yeni_durum="Revize Edilerek Onaylandı")
-
-    motor._ekrana_yaz("\n[4] GÜNCEL TABLO DURUMU:")
-    tablo_son = motor.verileri_goster()
-    if not tablo_son.empty:
-        print(tablo_son[["Kayit_ID", "Şirket", "Talep_Edilen_Saat", "Son_Durum"]].to_string(index=False))
-        sys.stdout.flush()
+    sirket = st.selectbox("Şirket Seçimi", ["Hakan Kalıp Plastik", "Alaşar"])
+    ref_no = st.text_input("Referans No (Örn: REF-9921)")
+    
+    # pH ve Miktar Yan Yana
+    k1, k2 = st.columns(2)
+    with k1:
+        ph = st.number_input("pH Değeri", min_value=0.1, max_value=14.0, value=7.0, step=0.1)
+    with k2:
+        miktar = st.number_input("Miktar", min_value=1, value=1000, step=1)
         
-    motor._ekrana_yaz("\n==================================================")
+    # Otomatik Formül Gösterimi (Miktar / pH)
+    hesaplanan_saat = round(miktar / ph, 2) if ph != 0 else 0
+    st.info(f"🧮 **Otomatik Hesaplanan Talep Saati:** {hesaplanan_saat} Saat")
+    
+    neden = st.text_area("Kayıp Zaman Nedeni")
+    is_tanimi = st.text_area("Yapılacak İşin Tanımı")
+    
+    # Tarihler Yan Yana
+    t1, t2 = st.columns(2)
+    with t1:
+        talep_tarihi = st.date_input("Talep Tarihi", datetime.now())
+    with t2:
+        onay_durumu_tarih = st.checkbox("Müşteri Onay Tarihi Var mı?")
+        onay_tarihi = st.date_input("Müşteri Onay Tarihi", datetime.now()) if onay_durumu_tarih else "-"
+
+    durum = st.selectbox("İlk Durum", ["Onaylandı", "Red Oldu", "Revize Edilerek Onaylandı", "İptal"])
+
+    if st.button("💾 Kaydı Veritabanına Ekle", use_container_width=True):
+        df_mevcut = veriyi_oku()
+        yeni_id = f"REQ-{(len(df_mevcut) + 1):04d}"
+        
+        yeni_satir = {
+            "Kayit_ID": yeni_id, "Şirket": sirket, "Referans_No": ref_no, "pH": ph, "Miktar": miktar,
+            "Kayıp_Zaman_Nedeni": neden, "Yapılacak_İşin_Tanımı": is_tanimi, "Talep_Edilen_Saat": hesaplanan_saat,
+            "Müşteri_Onay_Tarihi": str(onay_tarihi), "Talep_Tarihi": str(talep_tarihi), "Son_Durum": durum,
+            "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
+        }
+        
+        df_mevcut = pd.concat([df_mevcut, pd.DataFrame([yeni_satir])], ignore_index=True)
+        if veriyi_yaz(df_mevcut):
+            st.success(f"✔️ {yeni_id} başarıyla Excel'e kaydedildi!")
+            st.rerun()
+
+with sag_kol:
+    st.subheader("📊 Mevcut Süreç Takip Listesi")
+    df_goster = veriyi_oku()
+    
+    if not df_goster.empty:
+        # Tabloyu Web Sayfasında Göster
+        st.dataframe(df_goster[[
+            "Kayit_ID", "Şirket", "Referans_No", "Talep_Edilen_Saat", "Son_Durum", "Güncelleme_Tarihi"
+        ]], use_container_width=True, hide_index=True)
+        
+        st.hr()
+        st.subheader("🔄 Durum Güncelleme Paneli")
+        
+        # Güncellenecek ID ve Yeni Durum Seçimi yan yana
+        g1, g2 = st.columns(2)
+        with g1:
+            secilen_id = st.selectbox("Durumu Değişecek Kayıt ID", df_goster["Kayit_ID"].tolist())
+        with g2:
+            yeni_durum = st.selectbox("Yeni Durum Seçin", ["Onaylandı", "Red Oldu", "Revize Edilerek Onaylandı", "İptal"])
+            
+        if st.button("🔄 Durumu Güncelle ve Excel'e İşle", use_container_width=True):
+            df_goster.loc[df_goster["Kayit_ID"] == secilen_id, "Son_Durum"] = yeni_durum
+            df_goster.loc[df_goster["Kayit_ID"] == secilen_id, "Güncelleme_Tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+            if veriyi_yaz(df_goster):
+                st.success(f"✔️ {secilen_id} kaydı '{yeni_durum}' olarak güncellendi!")
+                st.rerun()
+    else:
+        st.info("Henüz veritabanında kayıtlı bir takip bulunmuyor. Soldaki panelden ilk kaydı ekleyebilirsiniz.")
