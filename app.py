@@ -49,7 +49,7 @@ tab_rework, tab_kalite, tab_patron = st.tabs(["🛠️ REWORK GİRİŞ", "🔍 K
 
 # --- 1. REWORK BÖLÜMÜ ---
 with tab_rework:
-    st.subheader("Tamir Edilen Ürün Veri Girişi")
+    st.subheader("🛠️ Tamir Edilen Ürün Veri Girişi")
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -66,71 +66,61 @@ with tab_rework:
         if st.button("🚀 Veriyi Kalite Onayına Gönder", use_container_width=True):
             df_r = veriyi_oku()
             saat = round(r_miktar / r_ph, 2)
+            yeni_id = f"RWK-{len(df_r)+1:04d}"
             yeni_satir = {
-                "Kayit_ID": f"RWK-{len(df_r)+1:04d}", "Şirket": r_sirket, "Referans_No": r_ref, "Dönem_Yıl": r_yil, "Dönem_Ay": r_ay,
+                "Kayit_ID": yeni_id, "Şirket": r_sirket, "Referans_No": r_ref, "Dönem_Yıl": r_yil, "Dönem_Ay": r_ay,
                 "pH": r_ph, "Miktar": r_miktar, "Kayıp_Zaman_Nedeni": r_neden, "Yapılacak_İşin_Tanımı": "Rework/Tamir İşlemi",
                 "Talep_Edilen_Saat": saat, "Hakedis_Tutari": saat * SAATLIK_BIRIM_FIYAT, "Legrand_Kesinti_Tutari": r_kesinti,
                 "Son_Durum": "Kalite Onayı Bekliyor", "Yonetici_Onay_Durumu": "Beklemede", "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
             if veriyi_yaz(pd.concat([df_r, pd.DataFrame([yeni_satir])], ignore_index=True)):
-                st.success("Veri Kalite Yöneticisine gönderildi!"); st.rerun()
+                st.success(f"✔️ {yeni_id} Verisi Kalite Yöneticisine gönderildi!"); st.rerun()
 
-    # Reddedilenleri Göster
+    st.markdown("---")
     st.markdown("### ⚠️ Reddedilen / Revize Bekleyenler")
     df_red = veriyi_oku()
     reddedilenler = df_red[df_red["Son_Durum"] == "Kalite Reddedildi"]
     if not reddedilenler.empty:
-        st.warning("Aşağıdaki kayıtlar kalite tarafından reddedilmiştir. Lütfen düzenleyip tekrar gönderin.")
+        st.warning("Aşağıdaki kayıtlar kalite tarafından reddedilmiştir.")
         st.dataframe(reddedilenler[["Kayit_ID", "Referans_No", "Kalite_Notu", "Güncelleme_Tarihi"]], use_container_width=True)
 
-# --- 2. KALİTE YÖNETİCİSİ ---
+# --- 2. KALİTE YÖNETİCİSİ (ÖMER) ---
 with tab_kalite:
-    st.subheader("🔍 Kalite Kontrol ve Onay Paneli")
-    k_user = st.text_input("Kalite Kullanıcı Adı", key="k_u")
-    k_pass = st.text_input("Kalite Şifre", type="password", key="k_p")
-    
-    if k_user == "kalite" and k_pass == "alasar_quality":
+    # Oturum kontrolü
+    if 'kalite_logged_in' not in st.session_state:
+        st.session_state['kalite_logged_in'] = False
+
+    if not st.session_state['kalite_logged_in']:
+        st.subheader("🔍 Kalite Kontrol Girişi")
+        k_user = st.text_input("Kullanıcı Adı (Kalite)", key="k_u")
+        k_pass = st.text_input("Şifre (Kalite)", type="password", key="k_p")
+        if st.button("Giriş Yap", key="k_btn"):
+            if k_user == "omer" and k_pass == "30052012":
+                st.session_state['kalite_logged_in'] = True
+                st.rerun()
+            else:
+                st.error("Hatalı Giriş!")
+    else:
+        # ÇIKIŞ BUTONU
+        if st.sidebar.button("🚪 Kalite Paneli Çıkış", key="logout_k"):
+            st.session_state['kalite_logged_in'] = False
+            st.rerun()
+            
+        st.success("Hoşgeldiniz Ömer Bey")
         df_k = veriyi_oku()
         onay_bekleyen = df_k[df_k["Son_Durum"] == "Kalite Onayı Bekliyor"]
         
         if not onay_bekleyen.empty:
-            st.write(f"Şu an **{len(onay_bekleyen)}** adet onay bekleyen rework işlemi var.")
             secilen_rwk = st.selectbox("İncelemek için ID Seçin", onay_bekleyen["Kayit_ID"].tolist())
             detay = onay_bekleyen[onay_bekleyen["Kayit_ID"] == secilen_rwk].iloc[0]
             
-            st.info(f"**Referans:** {detay['Referans_No']} | **Miktar:** {detay['Miktar']} | **Saat:** {detay['Talep_Edilen_Saat']}")
-            k_notu = st.text_area("Kalite Notu / Red Nedeni", key="k_not")
-            
-            c1, c2 = st.columns(2)
-            if c1.button("✅ ONAYLA (Nihai Tabloya Yaz)", use_container_width=True):
-                df_k.loc[df_k["Kayit_ID"] == secilen_rwk, ["Son_Durum", "Kalite_Notu", "Yonetici_Onay_Durumu"]] = ["Onaylandı", k_notu, "Yöneticiye Gönderildi"]
-                veriyi_yaz(df_k); st.success("Onaylandı!"); st.rerun()
-            
-            if c2.button("❌ REDDET (Rework'e Geri Gönder)", use_container_width=True):
-                df_k.loc[df_k["Kayit_ID"] == secilen_rwk, ["Son_Durum", "Kalite_Notu"]] = ["Kalite Reddedildi", k_notu]
-                veriyi_yaz(df_k); st.error("Reddedildi!"); st.rerun()
-        else: st.info("Onay bekleyen kayıt bulunamadı.")
-
-# --- 3. PATRON PANELİ ---
-with tab_patron:
-    st.subheader("👑 Üst Yönetim Finansal Takip")
-    p_user = st.text_input("Yönetici Adı", key="p_u")
-    p_pass = st.text_input("Şifre", type="password", key="p_p")
-    
-    if p_user == "patron" and p_pass == "alasar1234":
-        df_p = veriyi_oku()
-        # Patron sadece Kalite Onayından geçmiş "Nihai" verileri görür
-        nihai_veriler = df_p[df_p["Son_Durum"] == "Onaylandı"]
-        
-        if not nihai_veriler.empty:
-            hakedis = nihai_veriler["Hakedis_Tutari"].sum()
-            kesinti = nihai_veriler["Legrand_Kesinti_Tutari"].sum()
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Toplam Onaylı Saat", f"{nihai_veriler['Talep_Edilen_Saat'].sum():,.2f}")
-            m2.metric("Brüt Hakediş (TL)", f"{hakedis:,.2f} TL")
-            m3.metric("Net Hakediş (TL)", f"{(hakedis - kesinti):,.2f} TL", delta=f"-{kesinti:,.2f} Kesinti")
-            
-            st.markdown("### 📋 Onaylı İşlemler Listesi")
-            st.dataframe(nihai_veriler, use_container_width=True)
-        else: st.info("Henüz onaylanmış nihai bir veri bulunmuyor.")
+            with st.container(border=True):
+                st.write(f"**Referans:** {detay['Referans_No']} | **Saat:** {detay['Talep_Edilen_Saat']}")
+                k_notu = st.text_area("Kalite Notu", key="k_not")
+                c1, c2 = st.columns(2)
+                if c1.button("✅ ONAYLA", use_container_width=True):
+                    df_k.loc[df_k["Kayit_ID"] == secilen_rwk, ["Son_Durum", "Kalite_Notu", "Yonetici_Onay_Durumu"]] = ["Onaylandı", k_notu, "Yöneticiye Gönderildi"]
+                    veriyi_yaz(df_k); st.rerun()
+                if c2.button("❌ REDDET", use_container_width=True):
+                    df_k.loc[df_k["Kayit_ID"] == secilen_rwk, ["Son_Durum", "Kalite_Notu"]] = ["Kalite Reddedildi", k_notu]
+                    veriyi_yaz(df_k);
