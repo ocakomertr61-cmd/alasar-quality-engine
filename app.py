@@ -57,7 +57,7 @@ if not st.session_state['intro_done']:
             <h1 style="color:#2E86C1; font-size:60px;">Hoşgeldiniz Sevgili Alaşar Ailesi</h1>
             <p style="font-size:20px; color:#5D6D7E;">Sistem hazırlanıyor...</p>
         </div>
-    """, unsafe_allow_True=True)
+    """, unsafe_allow_html=True)
     st.balloons()
     time.sleep(2.5)
     st.session_state['intro_done'] = True
