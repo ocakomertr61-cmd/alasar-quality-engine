@@ -96,21 +96,44 @@ else:
     st.sidebar.button("🚪 Sistemden Çıkış", on_click=logout)
 
     # --- ÖMER BEY PANELİ (KALİTE) ---
-    if st.session_state['auth_role'] == 'omer':
-        st.header("🔍 Kalite ve Ana Tablo Yönetimi")
-        df_k = veriyi_oku()
+    # --- FİNANSAL FİLTRE VE SAYAÇ PANELİ (Ömer Bey ve Patron İçin Ortak) ---
+    st.markdown("### 📊 Dönemsel Performans Göstergeleri")
+    
+    # Filtre Seçenekleri
+    df_filter = veriyi_oku()
+    if not df_filter.empty:
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            secilen_yil = st.selectbox("Yıl Seçin", ["Tümü"] + sorted(df_filter["Dönem_Yıl"].unique().tolist()), index=0)
+        with col_f2:
+            secilen_ay = st.selectbox("Ay Seçin", ["Tümü"] + ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"], index=0)
 
-        # A. Üst Metrikler (Patron Panelindeki Gibi Toplam Saatler)
-        if not df_k.empty:
-            df_k["Hakedis_Tutari"] = pd.to_numeric(df_k["Hakedis_Tutari"], errors='coerce').fillna(0)
-            df_k["Talep_Edilen_Saat"] = pd.to_numeric(df_k["Talep_Edilen_Saat"], errors='coerce').fillna(0)
-            df_k["Legrand_Kesinti_Tutari"] = pd.to_numeric(df_k["Legrand_Kesinti_Tutari"], errors='coerce').fillna(0)
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Toplam Kayıtlı Saat", f"{df_k['Talep_Edilen_Saat'].sum():,.2f} sa")
-            m2.metric("Brüt Toplam Tutar", f"{df_k['Hakedis_Tutari'].sum():,.2f} TL")
-            m3.metric("Net Toplam (Kesintisiz)", f"{(df_k['Hakedis_Tutari'].sum() - df_k['Legrand_Kesinti_Tutari'].sum()):,.2f} TL")
-            st.markdown("---")
+        # Veriyi Filtreleme
+        temp_df = df_filter.copy()
+        if secilen_yil != "Tümü":
+            temp_df = temp_df[temp_df["Dönem_Yıl"].astype(str) == str(secilen_yil)]
+        if secilen_ay != "Tümü":
+            temp_df = temp_df[temp_df["Dönem_Ay"] == secilen_ay]
+
+        # Sayısal Dönüşümler
+        temp_df["Talep_Edilen_Saat"] = pd.to_numeric(temp_df["Talep_Edilen_Saat"], errors='coerce').fillna(0)
+        temp_df["Hakedis_Tutari"] = pd.to_numeric(temp_df["Hakedis_Tutari"], errors='coerce').fillna(0)
+        temp_df["Legrand_Kesinti_Tutari"] = pd.to_numeric(temp_df["Legrand_Kesinti_Tutari"], errors='coerce').fillna(0)
+
+        # Onaylanmış Veriler İçin Ayrı Hesaplama
+        onaylanmis_df = temp_df[temp_df["Son_Durum"] == "Onaylandı"]
+
+        # Sayaçlar (5'li Metrik Sistemi)
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Talep Edilen Saat", f"{temp_df['Talep_Edilen_Saat'].sum():,.2f} sa")
+        m2.metric("Onaylanan Saat", f"{onaylanmis_df['Talep_Edilen_Saat'].sum():,.2f} sa")
+        m3.metric("Onaylanan Tutar", f"{onaylanmis_df['Hakedis_Tutari'].sum():,.2f} TL")
+        m4.metric("Ek İşçilik Kesintisi", f"{temp_df['Legrand_Kesinti_Tutari'].sum():,.2f} TL", delta_color="inverse")
+        
+        net_tutar = onaylanmis_df['Hakedis_Tutari'].sum() - temp_df['Legrand_Kesinti_Tutari'].sum()
+        m5.metric("Elde Edilen Net", f"{net_tutar:,.2f} TL", delta=f"{len(temp_df)} Kayıt")
+
+        st.markdown("---")
 
         tab1, tab2, tab3 = st.tabs(["📊 ANA TABLO & DÜZENLEME", "✅ ONAY BEKLEYENLER", "➕ FULL MANUEL KAYIT"])
         
@@ -174,15 +197,44 @@ else:
 
     # --- PATRON PANELİ ---
     elif st.session_state['auth_role'] == 'patron':
-        st.header("👑 Kesinleşmiş Finansal Raporlar")
-        df_p = veriyi_oku()
-        if not df_p.empty:
-            kesin = df_p[df_p["Son_Durum"] == "Onaylandı"].copy()
-            if not kesin.empty:
-                st.metric("Toplam Onaylı Net Hakediş", f"{(pd.to_numeric(kesin['Hakedis_Tutari']).sum() - pd.to_numeric(kesin['Legrand_Kesinti_Tutari']).sum()):,.2f} TL")
-                st.dataframe(kesin, use_container_width=True, hide_index=True)
-            else: st.warning("Onaylı kayıt bulunamadı.")
-        else: st.info("Veritabanı boş.")
+       # --- FİNANSAL FİLTRE VE SAYAÇ PANELİ (Ömer Bey ve Patron İçin Ortak) ---
+    st.markdown("### 📊 Dönemsel Performans Göstergeleri")
+    
+    # Filtre Seçenekleri
+    df_filter = veriyi_oku()
+    if not df_filter.empty:
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            secilen_yil = st.selectbox("Yıl Seçin", ["Tümü"] + sorted(df_filter["Dönem_Yıl"].unique().tolist()), index=0)
+        with col_f2:
+            secilen_ay = st.selectbox("Ay Seçin", ["Tümü"] + ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"], index=0)
+
+        # Veriyi Filtreleme
+        temp_df = df_filter.copy()
+        if secilen_yil != "Tümü":
+            temp_df = temp_df[temp_df["Dönem_Yıl"].astype(str) == str(secilen_yil)]
+        if secilen_ay != "Tümü":
+            temp_df = temp_df[temp_df["Dönem_Ay"] == secilen_ay]
+
+        # Sayısal Dönüşümler
+        temp_df["Talep_Edilen_Saat"] = pd.to_numeric(temp_df["Talep_Edilen_Saat"], errors='coerce').fillna(0)
+        temp_df["Hakedis_Tutari"] = pd.to_numeric(temp_df["Hakedis_Tutari"], errors='coerce').fillna(0)
+        temp_df["Legrand_Kesinti_Tutari"] = pd.to_numeric(temp_df["Legrand_Kesinti_Tutari"], errors='coerce').fillna(0)
+
+        # Onaylanmış Veriler İçin Ayrı Hesaplama
+        onaylanmis_df = temp_df[temp_df["Son_Durum"] == "Onaylandı"]
+
+        # Sayaçlar (5'li Metrik Sistemi)
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Talep Edilen Saat", f"{temp_df['Talep_Edilen_Saat'].sum():,.2f} sa")
+        m2.metric("Onaylanan Saat", f"{onaylanmis_df['Talep_Edilen_Saat'].sum():,.2f} sa")
+        m3.metric("Onaylanan Tutar", f"{onaylanmis_df['Hakedis_Tutari'].sum():,.2f} TL")
+        m4.metric("Ek İşçilik Kesintisi", f"{temp_df['Legrand_Kesinti_Tutari'].sum():,.2f} TL", delta_color="inverse")
+        
+        net_tutar = onaylanmis_df['Hakedis_Tutari'].sum() - temp_df['Legrand_Kesinti_Tutari'].sum()
+        m5.metric("Elde Edilen Net", f"{net_tutar:,.2f} TL", delta=f"{len(temp_df)} Kayıt")
+
+        st.markdown("---")
 
     # --- REWORK PANELİ ---
     elif st.session_state['auth_role'] == 'rework':
