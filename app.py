@@ -109,7 +109,6 @@ with sag_kol:
         secilen_id = st.selectbox("Düzenlenecek ID", df_goster["Kayit_ID"].tolist())
         kayit_verisi = df_goster[df_goster["Kayit_ID"] == secilen_id].iloc[0]
         
-        # GÜNCELLEME FORMU (Hata düzeltildi)
         with st.form(key="duzenleme_formu"):
             g_sirket = st.selectbox("Şirket", ["Hakan Kalıp Plastik", "Alaşar"], index=["Hakan Kalıp Plastik", "Alaşar"].index(kayit_verisi["Şirket"]))
             g_ref_no = st.text_input("Referans No", value=str(kayit_verisi["Referans_No"]))
@@ -125,7 +124,6 @@ with sag_kol:
             
             g_durum = st.selectbox("Son Durum", ["Onaylandı", "Red Oldu", "Revize Edilerek Onaylandı", "İptal"], index=["Onaylandı", "Red Oldu", "Revize Edilerek Onaylandı", "İptal"].index(kayit_verisi["Son_Durum"]))
             
-            # Formun gönderilmesi için tek ve doğru buton
             submit_button = st.form_submit_button(label="⚙️ Değişiklikleri Kaydet", use_container_width=True)
             
             if submit_button:
@@ -138,6 +136,7 @@ with sag_kol:
                     st.rerun()
 
         st.markdown("---")
+        # TEKİL SİLME PANELİ
         st.subheader("🗑️ Kayıt Sil")
         sil_id = st.selectbox("Silinecek ID", df_goster["Kayit_ID"].tolist(), key="sil_sb")
         if st.button(f"❌ {sil_id} Kaydını Sil", use_container_width=True):
@@ -145,5 +144,35 @@ with sag_kol:
             if veriyi_yaz(df_yeni):
                 st.success("Kayıt silindi.")
                 st.rerun()
+
+        # --- YÖNETİCİ PANELİ (TOPLU SİLME) ---
+        st.markdown("---")
+        with st.expander("🔐 YÖNETİCİ PANELİ (TÜM LİSTEYİ SİLME)"):
+            st.warning("DİKKAT: Bu işlem geri alınamaz! Tablodaki tüm veriler temizlenecektir.")
+            admin_parola = st.text_input("Yönetici Parolasını Girin", type="password")
+            
+            if st.button("🔥 TÜM LİSTEYİ TEMİZLE", use_container_width=True):
+                if admin_parola == "30052012":
+                    # Onay mekanizması
+                    st.session_state.onay_bekleniyor = True
+                else:
+                    st.error("Hatalı parola! Yetkiniz yok.")
+
+            # Emin misiniz? Onayı
+            if st.session_state.get('onay_bekleniyor', False):
+                st.error("EMİN MİSİNİZ? Tüm veriler kalıcı olarak silinecek.")
+                col_onay1, col_onay2 = st.columns(2)
+                with col_onay1:
+                    if st.button("EVET, TÜMÜNÜ SİL"):
+                        df_bos = pd.DataFrame(columns=KOLONLAR)
+                        if veriyi_yaz(df_bos):
+                            st.session_state.onay_bekleniyor = False
+                            st.success("Veritabanı tamamen temizlendi.")
+                            st.rerun()
+                with col_onay2:
+                    if st.button("HAYIR, İPTAL ET"):
+                        st.session_state.onay_bekleniyor = False
+                        st.info("İşlem iptal edildi.")
+                        st.rerun()
     else:
         st.info("Kayıt bulunamadı.")
