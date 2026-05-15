@@ -177,17 +177,72 @@ else:
                 st.info("Şu an onay bekleyen herhangi bir iç kayıt bulunmuyor.")
 
         with tab3:
-            with st.form("full_manuel"):
-                ca, cb, cc = st.columns(3)
-                m_irs = ca.text_input("İrsaliye No"); m_mik = cb.number_input("Miktar", 1); m_ay = cc.selectbox("Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
-                m_ref = ca.text_input("Referans No"); m_ph = cb.number_input("pH", 7.0); m_yil = cc.selectbox("Yıl", ["2025", "2026"], index=1)
-                m_kesinti = cb.number_input("Kesinti Tutarı", 0.0); m_durum = cc.selectbox("Durum", ["Beklemede (İç Kayıt)", "Mutabakat Bekliyor", "Onaylandı"])
-                m_neden = st.text_area("Açıklama")
-                if st.form_submit_button("Ekle"):
+            st.subheader("Ömer Bey - Tam Yetkili Manuel Veri Girişi")
+            st.caption("Bu formdan girilen veriler doğrudan ana tabloya işlenir ve tüm hesaplamalara dahil edilir.")
+            
+            with st.form("full_manuel_form", clear_on_submit=True):
+                # Üç sütunlu profesyonel yerleşim
+                col_m1, col_m2, col_m3 = st.columns(3)
+                
+                with col_m1:
+                    m_sirket = st.selectbox("Şirket", ["Legrand", "Siemens", "Hakan Kalıp Plastik", "Alaşar"])
+                    m_irs = st.text_input("İrsaliye No")
+                    m_ref = st.text_input("Referans No")
+                    m_onay_veren = st.text_input("Onay Veren (Müşteri Yetkilisi)")
+
+                with col_m2:
+                    m_mik = st.number_input("Miktar (Adet)", min_value=1, step=1)
+                    m_ph = st.number_input("pH (Hız)", value=7.0, step=0.1)
+                    m_kesinti = st.number_input("Legrand Kesinti Tutarı (TL)", value=0.0, step=10.0)
+                    m_kalite_notu = st.text_input("Kalite Notu (Özel Notlar)")
+
+                with col_m3:
+                    m_yil = st.selectbox("Dönem Yıl", ["2025", "2026", "2027"], index=1)
+                    m_ay = st.selectbox("Dönem Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"], index=datetime.now().month - 1)
+                    m_durum = st.selectbox("Son Durum", ["Onaylandı", "Mutabakat Bekliyor", "Beklemede (İç Kayıt)", "Kalite Reddedildi"])
+                    m_tarih = st.date_input("İşlem Tarihi", datetime.now())
+
+                m_neden = st.text_area("İşlem / Kayıp Zaman Nedeni (Açıklama)")
+                
+                submit_button = st.form_submit_button("Sisteme Kayıt Ekle", use_container_width=True)
+                
+                if submit_button:
+                    # Otomatik Hesaplamalar
                     m_saat = round(m_mik / m_ph, 2)
-                    yeni = {"Kayit_ID": f"MAN-{len(df_genel)+1}", "Şirket": "Alaşar", "İrsaliye_No": m_irs, "Referans_No": m_ref, "Dönem_Yıl": m_yil, "Dönem_Ay": m_ay, "pH": m_ph, "Miktar": m_mik, "Talep_Edilen_Saat": m_saat, "Hakedis_Tutari": m_saat * SAATLIK_BIRIM_FIYAT, "Legrand_Kesinti_Tutari": m_kesinti, "Son_Durum": m_durum, "Kayıp_Zaman_Nedeni": m_neden}
-                    df_genel = pd.concat([df_genel, pd.DataFrame([yeni])], ignore_index=True)
-                    veriyi_yaz(df_genel); st.success("Eklendi!"); st.rerun()
+                    m_hakedis = round(m_saat * SAATLIK_BIRIM_FIYAT, 2)
+                    yeni_id = f"MAN-{datetime.now().strftime('%d%H%M%S')}"
+                    
+                    # Veritabanı yapısına uygun sözlük oluşturma
+                    yeni_satir = {
+                        "Kayit_ID": yeni_id,
+                        "Şirket": m_sirket,
+                        "İrsaliye_No": m_irs,
+                        "Referans_No": m_ref,
+                        "Dönem_Yıl": m_yil,
+                        "Dönem_Ay": m_ay,
+                        "pH": m_ph,
+                        "Miktar": m_mik,
+                        "Kayıp_Zaman_Nedeni": m_neden,
+                        "Yapılacak_İşin_Tanımı": m_neden, # Açıklama buraya da yazılır
+                        "Onay_Veren": m_onay_veren,
+                        "Talep_Edilen_Saat": m_saat,
+                        "Hakedis_Tutari": m_hakedis,
+                        "Legrand_Kesinti_Tutari": m_kesinti,
+                        "Son_Durum": m_durum,
+                        "Kalite_Notu": m_kalite_notu,
+                        "Talep_Tarihi": m_tarih.strftime("%Y-%m-%d"),
+                        "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Veri_Kaynagi": "ÖMER BEY MANUEL"
+                    }
+                    
+                    # Veriyi ekle ve kaydet
+                    df_genel = pd.concat([df_genel, pd.DataFrame([yeni_satir])], ignore_index=True)
+                    veriyi_yaz(df_genel)
+                    
+                    st.success(f"Kayıt başarıyla eklendi: {yeni_id}")
+                    st.balloons()
+                    time.sleep(1)
+                    st.rerun()
 
     # --- PATRON PANELİ ---
     elif st.session_state['auth_role'] == 'patron':
