@@ -222,4 +222,25 @@ else:
                     m_mik = st.number_input("Miktar", min_value=1, value=1)
                     m_sirket = st.selectbox("Şirket", ["Alaşar", "Hakan Kalıp Plastik"])
                 
+                # Hatanın alındığı yer burasıydı, altındaki kodlar içeri çekildi:
                 if st.form_submit_button("Sisteme Manuel Ekle"):
+                    m_saat = round(m_mik / m_ph, 2)
+                    yeni_manuel = {
+                        "Kayit_ID": f"MAN-{len(df_k)+1:04d}", 
+                        "Şirket": m_sirket, 
+                        "İrsaliye_No": m_irs, 
+                        "Referans_No": m_ref, 
+                        "pH": m_ph, 
+                        "Miktar": m_mik, 
+                        "Kayıp_Zaman_Nedeni": m_neden, 
+                        "Talep_Edilen_Saat": m_saat,
+                        "Hakedis_Tutari": m_saat * SAATLIK_BIRIM_FIYAT, 
+                        "Son_Durum": "Beklemede (İç Kayıt)", 
+                        "Güncelleme_Tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                        "Veri_Kaynagi": "MANUEL (ÖMER)"
+                    }
+                    # DataFrame'e ekle ve kaydet
+                    df_k = pd.concat([df_k, pd.DataFrame([yeni_manuel])], ignore_index=True)
+                    veriyi_yaz(df_k)
+                    st.success("Manuel kayıt eklendi.")
+                    st.rerun()
