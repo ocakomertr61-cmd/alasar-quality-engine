@@ -32,15 +32,20 @@ def baslangic_ayarlarini_yap():
                 df_mevcut.to_excel(writer, sheet_name='Veriler', index=False)
 
 baslangic_ayarlarini_yap()
-def veriyi_oku(): return pd.read_excel(DOSYA_ADI, sheet_name='Veriler')
+
+def veriyi_oku():
+    return pd.read_excel(DOSYA_ADI, sheet_name='Veriler')
+
 def veriyi_yaz(df):
     with pd.ExcelWriter(DOSYA_ADI, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
         df.to_excel(writer, sheet_name='Veriler', index=False)
     return True
 
-# --- 3. OTURUM VE ÇIKIŞ ---
-if 'auth_role' not in st.session_state: st.session_state['auth_role'] = None
-if 'intro_done' not in st.session_state: st.session_state['intro_done'] = False
+# --- 3. OTURUM VE KARŞILAMA ---
+if 'auth_role' not in st.session_state:
+    st.session_state['auth_role'] = None
+if 'intro_done' not in st.session_state:
+    st.session_state['intro_done'] = False
 
 def logout():
     st.session_state['auth_role'] = None
@@ -48,123 +53,117 @@ def logout():
 
 # --- 4. HOŞGELDİN EKRANI ---
 if not st.session_state['intro_done']:
-    st.markdown('<div style="text-align:center; margin-top:150px;"><h1 style="color:#2E86C1; font-size:60px;">Hoşgeldiniz Sevgili Alaşar Ailesi</h1></div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div style="text-align:center; margin-top:150px;">
+            <h1 style="color:#2E86C1; font-size:60px;">Hoşgeldiniz Sevgili Alaşar Ailesi</h1>
+            <p style="font-size:20px; color:#5D6D7E;">Sistem hazırlanıyor...</p>
+        </div>
+    """, unsafe_allow_html=True)
     st.balloons()
-    time.sleep(2.0)
+    time.sleep(2.5)
     st.session_state['intro_done'] = True
     st.rerun()
 
-# --- 5. GİRİŞ PANELİ ---
+# --- 5. ANA GİRİŞ PANELİ ---
 if st.session_state['auth_role'] is None:
     st.title("🛡️ Alaşar Kalite & Finansal Takip Sistemi")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("🛠️ REWORK BİRİMİ GİRİŞİ", use_container_width=True): st.session_state['auth_role'] = 'rework'; st.rerun()
-    with c2:
-        u = st.text_input("Kullanıcı"); p = st.text_input("Şifre", type="password")
-        if st.button("🔍 ÖMER BEY GİRİŞİ", use_container_width=True):
-            if u == "omer" and p == "30052012": st.session_state['auth_role'] = 'omer'; st.rerun()
-    with c3:
-        if st.button("👑 YÖNETİCİ (PATRON) GİRİŞİ", use_container_width=True): st.session_state['auth_role'] = 'patron'; st.rerun()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        with st.expander("🛠️ REWORK BİRİMİ"):
+            if st.button("Rework Girişi", use_container_width=True):
+                st.session_state['auth_role'] = 'rework'
+                st.rerun()
 
+    with col2:
+        with st.expander("🔍 KALİTE (ÖMER BEY)"):
+            u_o = st.text_input("Kullanıcı Adı", key="u_omer")
+            p_o = st.text_input("Şifre", type="password", key="p_omer")
+            if st.button("Ömer Bey Girişi", use_container_width=True):
+                if u_o == "omer" and p_o == "30052012":
+                    st.session_state['auth_role'] = 'omer'
+                    st.rerun()
+                else: st.error("Hatalı Giriş!")
+
+    with col3:
+        with st.expander("👑 YÖNETİCİ (PATRON)"):
+            if st.button("Patron Girişi", use_container_width=True):
+                st.session_state['auth_role'] = 'patron'
+                st.rerun()
+
+# --- 6. BİRİM PANELLERİ ---
 else:
     st.sidebar.title(f"👤 {st.session_state['auth_role'].upper()}")
-    st.sidebar.button("🚪 Çıkış", on_click=logout)
+    st.sidebar.button("🚪 Sistemden Çıkış", on_click=logout)
     df_genel = veriyi_oku()
 
     # --- ÖMER BEY PANELİ ---
     if st.session_state['auth_role'] == 'omer':
         st.header("🔍 Kalite ve Ana Tablo Yönetimi")
         
+        # SAYAÇ VE FİLTRE PANELİ
+        st.markdown("### 📊 Dönemsel Performans Göstergeleri")
         if not df_genel.empty:
-            f1, f2 = st.columns(2)
-            sel_yil = f1.selectbox("Yıl", ["Tümü"] + sorted(df_genel["Dönem_Yıl"].unique().astype(str).tolist()))
-            sel_ay = f2.selectbox("Ay", ["Tümü", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                secilen_yil = st.selectbox("Yıl Seçin", ["Tümü"] + sorted(df_genel["Dönem_Yıl"].unique().astype(str).tolist()), index=0)
+            with col_f2:
+                secilen_ay = st.selectbox("Ay Seçin", ["Tümü", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"], index=0)
 
             temp_df = df_genel.copy()
-            if sel_yil != "Tümü": temp_df = temp_df[temp_df["Dönem_Yıl"].astype(str) == str(sel_yil)]
-            if sel_ay != "Tümü": temp_df = temp_df[temp_df["Dönem_Ay"] == sel_ay]
+            if secilen_yil != "Tümü": temp_df = temp_df[temp_df["Dönem_Yıl"].astype(str) == str(secilen_yil)]
+            if secilen_ay != "Tümü": temp_df = temp_df[temp_df["Dönem_Ay"] == secilen_ay]
 
-            for c in ["Hakedis_Tutari", "Legrand_Kesinti_Tutari"]:
+            for c in ["Talep_Edilen_Saat", "Hakedis_Tutari", "Legrand_Kesinti_Tutari"]:
                 temp_df[c] = pd.to_numeric(temp_df[c], errors='coerce').fillna(0)
 
-            onayli = temp_df[temp_df["Son_Durum"] == "Onaylandı"]
-            brut = onayli["Hakedis_Tutari"].sum()
-            kesinti = temp_df["Legrand_Kesinti_Tutari"].sum()
+            onaylanmis = temp_df[temp_df["Son_Durum"] == "Onaylandı"]
             
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Brüt Hakediş", f"{brut:,.0f} TL")
-            m2.metric("Toplam Kesinti", f"{kesinti:,.0f} TL", delta_color="inverse")
-            m3.metric("Net Alacak", f"{brut - kesinti:,.0f} TL")
+            # --- HESAPLAMA MANTIĞI ---
+            toplam_brut = onaylanmis['Hakedis_Tutari'].sum()
+            toplam_kesinti = temp_df['Legrand_Kesinti_Tutari'].sum()
+            net_alacak = toplam_brut - toplam_kesinti
 
-        tab1, tab2, tab3 = st.tabs(["📊 ANA TABLO", "✅ ONAY BEKLEYENLER", "➕ FULL MANUEL KAYIT"])
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Talep Saati", f"{temp_df['Talep_Edilen_Saat'].sum():,.2f}")
+            m2.metric("Onaylanan Saat", f"{onaylanmis['Talep_Edilen_Saat'].sum():,.2f}")
+            m3.metric("Onaylanan Tutar", f"{toplam_brut:,.0f} TL")
+            m4.metric("Legrand Kesintisi", f"{toplam_kesinti:,.0f} TL", delta_color="inverse")
+            m5.metric("Elde Edilen Net", f"{net_alacak:,.0f} TL")
+            st.markdown("---")
+
+        tab1, tab2, tab3 = st.tabs(["📊 ANA TABLO & DÜZENLEME", "✅ ONAY BEKLEYENLER", "➕ FULL MANUEL KAYIT"])
         
         with tab1:
+            # Ana tabloda kesinti sütununu gizleyerek gösteriyoruz
             df_viz = df_genel.drop(columns=["Legrand_Kesinti_Tutari"]) if "Legrand_Kesinti_Tutari" in df_genel.columns else df_genel
-            edited = st.data_editor(df_viz, use_container_width=True, hide_index=True)
-            if st.button("💾 Değişiklikleri Kaydet"):
-                final_df = pd.concat([edited, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
-                veriyi_yaz(final_df); st.success("Kaydedildi!")
+            edited_df = st.data_editor(df_viz, use_container_width=True, hide_index=True, num_rows="dynamic")
+            if st.button("💾 Tüm Değişiklikleri Kaydet"):
+                # Kaydederken orijinal kesinti sütununu koruyarak birleştiriyoruz
+                final_to_save = pd.concat([edited_df, df_genel[["Legrand_Kesinti_Tutari"]]], axis=1)
+                veriyi_yaz(final_to_save); st.success("Kaydedildi!"); st.rerun()
 
         with tab2:
+            st.subheader("Onay Bekleyen Kayıtlar")
             taslaklar = df_genel[df_genel["Son_Durum"] == "Beklemede (İç Kayıt)"]
+            
             if not taslaklar.empty:
-                sid = st.selectbox("Kayıt Seç", taslaklar["Kayit_ID"].tolist())
-                detay = taslaklar[taslaklar["Kayit_ID"] == sid].iloc[0]
-                st.info(f"Firma: {detay['Şirket']} | İrsaliye: {detay['İrsaliye_No']} | Miktar: {detay['Miktar']}")
-                if st.button("Onayla"):
-                    df_genel.loc[df_genel["Kayit_ID"] == sid, "Son_Durum"] = "Onaylandı"
-                    veriyi_yaz(df_genel); st.rerun()
-            else: st.info("Bekleyen iş yok.")
-
-        with tab3:
-            st.subheader("Manuel Kayıt & Kesinti Girişi")
-            with st.form("manual_form"):
-                col_a, col_b, col_c = st.columns(3)
-                m_sirket = col_a.selectbox("Şirket", ["Legrand", "Siemens", "Alaşar"])
-                m_irs = col_a.text_input("İrsaliye No")
-                m_mik = col_b.number_input("Miktar", 1)
-                m_ph = col_b.number_input("pH (Hız)", 7.0)
-                m_kesinti = col_b.number_input("Legrand Kesinti Tutarı (TL)", 0.0)
-                m_ay = col_c.selectbox("Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
-                m_yil = col_c.selectbox("Yıl", ["2025", "2026"], index=1)
-                if st.form_submit_button("Sisteme Ekle"):
-                    saat = round(m_mik / m_ph, 2)
-                    yeni = {
-                        "Kayit_ID": f"MAN-{datetime.now().strftime('%d%H%M')}",
-                        "Şirket": m_sirket, "İrsaliye_No": m_irs, "Miktar": m_mik, "pH": m_ph,
-                        "Talep_Edilen_Saat": saat, "Hakedis_Tutari": saat * SAATLIK_BIRIM_FIYAT,
-                        "Legrand_Kesinti_Tutari": m_kesinti, "Son_Durum": "Onaylandı",
-                        "Dönem_Ay": m_ay, "Dönem_Yıl": m_yil, "Veri_Kaynagi": "MANUEL"
-                    }
-                    df_genel = pd.concat([df_genel, pd.DataFrame([yeni])], ignore_index=True)
-                    veriyi_yaz(df_genel); st.rerun()
-
-    # --- REWORK PANELİ ---
-    elif st.session_state['auth_role'] == 'rework':
-        st.header("🛠️ Rework Birimi - İş Girişi")
-        with st.form("rew_form"):
-            r_sirket = st.selectbox("Firma", ["Alaşar", "Legrand", "Siemens"])
-            r_irs = st.text_input("İrsaliye No")
-            r_mik = st.number_input("Miktar", 1)
-            if st.form_submit_button("Kaliteye Gönder"):
-                saat = round(r_mik / 7.0, 2)
-                yeni_rew = {
-                    "Kayit_ID": f"REW-{datetime.now().strftime('%d%H%M')}",
-                    "Şirket": r_sirket, "İrsaliye_No": r_irs, "Miktar": r_mik,
-                    "Talep_Edilen_Saat": saat, "Son_Durum": "Beklemede (İç Kayıt)",
-                    "Dönem_Ay": "Mayıs", "Dönem_Yıl": "2026", "Veri_Kaynagi": "REWORK"
-                }
-                df_genel = pd.concat([df_genel, pd.DataFrame([yeni_rew])], ignore_index=True)
-                veriyi_yaz(df_genel); st.success("Onaya gönderildi."); st.rerun()
-
-    # --- PATRON PANELİ ---
-    elif st.session_state['auth_role'] == 'patron':
-        st.header("👑 Yönetici Finansal Özet")
-        onayli_p = df_genel[df_genel["Son_Durum"] == "Onaylandı"]
-        brut_p = onayli_p["Hakedis_Tutari"].sum()
-        kesinti_p = df_genel["Legrand_Kesinti_Tutari"].sum()
-        c1, c2 = st.columns(2)
-        c1.metric("Brüt Hakediş", f"{brut_p:,.0f} TL")
-        c2.metric("Net Alacak", f"{brut_p - kesinti_p:,.0f} TL")
-        st.dataframe(onayli_p[["Dönem_Ay", "Şirket", "İrsaliye_No", "Hakedis_Tutari"]], use_container_width=True)
+                secilen_id = st.selectbox("İşlem Yapılacak Kayıt ID", taslaklar["Kayit_ID"].tolist())
+                detay = taslaklar[taslaklar["Kayit_ID"] == secilen_id].iloc[0]
+                
+                st.markdown(f"""
+                <div style="background-color:#f0f2f6; padding:15px; border-radius:10px; border-left:5px solid #2E86C1;">
+                    <h4 style="margin-top:0;">📋 Kayıt Detayları</h4>
+                    <table style="width:100%; font-size:14px;">
+                        <tr><td><b>Şirket:</b> {detay['Şirket']}</td><td><b>İrsaliye No:</b> {detay['İrsaliye_No']}</td></tr>
+                        <tr><td><b>Referans:</b> {detay['Referans_No']}</td><td><b>Miktar:</b> {detay['Miktar']} Adet</td></tr>
+                        <tr><td><b>Dönem:</b> {detay['Dönem_Ay']} / {detay['Dönem_Yıl']}</td><td><b>Veri Kaynağı:</b> {detay['Veri_Kaynagi']}</td></tr>
+                    </table>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                notu = st.text_area("Kalite Notu / İnceleme Sonucu")
+                
+                c1, c2 = st.columns(2)
+                if c1.button("✅ Mutabakata Gönder", use_container_width=True):
+                    df_genel.loc[df_genel["Kayit_ID"] == secilen_id, ["Son_Durum", "Kalite_Notu", "Güncelleme_Tarihi"]] = ["Mutabakat Bekliyor", notu, datetime.now().strftime("%Y-%m-%
